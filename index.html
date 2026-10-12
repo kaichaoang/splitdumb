@@ -93,7 +93,7 @@
   button.danger:hover { color:var(--bad); border-color:var(--bad); }
   button:disabled { opacity:.5; cursor:default; }
   label.chk { display:flex; align-items:center; gap:9px; padding:5px 0; } label.chk input { width:auto; margin:0; accent-color:var(--primary); }
-  .grid2 { display:grid; grid-template-columns:2fr 1fr; gap:8px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
   .grid2b { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; } .grid2b button { width:auto; padding-left:18px; padding-right:18px; }
   .upper { text-transform:uppercase; }
   .seg { display:flex; gap:6px; margin:6px 0; background:var(--bg); padding:4px; border-radius:14px; }
@@ -129,7 +129,9 @@ const $ = (id) => document.getElementById(id);
 const configured = window.SUPABASE_URL && !window.SUPABASE_URL.includes("YOUR-PROJECT");
 const sb = configured ? supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY) : null;
 
-const CURRENCIES = ["SGD","MYR","USD","EUR","GBP","JPY","THB","IDR","AUD","CNY","HKD","KRW","VND","PHP","INR","TWD"];
+const CURRENCIES = [["SGD","Singapore dollar"],["MYR","Malaysian ringgit"],["USD","US dollar"],["EUR","Euro"],["GBP","British pound"],["JPY","Japanese yen"],
+  ["THB","Thai baht"],["IDR","Indonesian rupiah"],["AUD","Australian dollar"],["CNY","Chinese yuan"],["HKD","Hong Kong dollar"],["KRW","South Korean won"],
+  ["VND","Vietnamese dong"],["PHP","Philippine peso"],["INR","Indian rupee"],["TWD","Taiwan dollar"],["NZD","New Zealand dollar"],["CAD","Canadian dollar"],["CHF","Swiss franc"],["AED","UAE dirham"]];
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const money = (cents) => (cents / 100).toFixed(2);
 const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
@@ -406,8 +408,9 @@ function drawGroup(ctx) {
       <input id="desc" placeholder="What was it for?" value="${editing ? esc(editing.description) : ""}">
       <div class="grid2">
         <input id="amt" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Amount" value="${editing ? Number(editing.amount).toFixed(2) : ""}">
-        <input id="ccy" class="upper" list="ccylist" maxlength="3" value="${esc(editing ? curOf(editing) : getLastCurrency())}" placeholder="CUR" aria-label="Currency">
-        <datalist id="ccylist">${CURRENCIES.map((c) => `<option value="${c}">`).join("")}</datalist>
+        ${(() => { const cur = editing ? curOf(editing) : getLastCurrency(), known = CURRENCIES.some(([c]) => c === cur);
+          return `<select id="ccy" aria-label="Currency">${(known ? CURRENCIES : [[cur, ""], ...CURRENCIES]).map(([c, n]) => `<option value="${c}" ${c === cur ? "selected" : ""}>${c}${n ? " · " + n : ""}</option>`).join("")}<option value="OTHER">Other…</option></select>`; })()}
+        <input id="ccyother" class="upper" maxlength="3" placeholder="3-letter code" style="display:none;grid-column:1/-1">
       </div>
       <div class="muted" style="margin-top:6px">Paid by</div>
       <select id="payer">${members.map((m) => `<option value="${m.id}" ${m.id === (editing ? editing.paid_by : meId) ? "selected" : ""}>${esc(m.name)}${youTag(m)}</option>`).join("")}</select>
@@ -496,11 +499,12 @@ function drawGroup(ctx) {
 // The add / edit expense form
 function wireForm(ctx, me, editing) {
   const { id } = ctx;
+  const getCcy = () => ($("ccy").value === "OTHER" ? $("ccyother").value : $("ccy").value).trim().toUpperCase();
   const rows = () => [...document.querySelectorAll(".srow")];
 
   function updatePreview() {
     rows().forEach((r) => (r.querySelector(".prev").textContent = ""));
-    const amount = parseFloat($("amt").value), cur = $("ccy").value.trim().toUpperCase();
+    const amount = parseFloat($("amt").value), cur = getCcy();
     const show = (memberId, share) => { const r = rows().find((x) => x.dataset.id === memberId); if (r) r.querySelector(".prev").textContent = `${cur} ${share.toFixed(2)}`; };
     if (splitMode === "percent") {
       const entries = rows().map((r) => ({ id: r.dataset.id, percent: parseFloat(r.querySelector(".pct").value) || 0 }));
@@ -528,7 +532,8 @@ function wireForm(ctx, me, editing) {
     document.querySelectorAll("[data-mode]").forEach((x) => x.classList.toggle("on", x.dataset.mode === next));
     updatePreview();
   }));
-  ["amt", "ccy"].forEach((k) => ($(k).oninput = updatePreview));
+  ["amt", "ccyother"].forEach((k) => ($(k).oninput = updatePreview));
+  $("ccy").onchange = () => { $("ccyother").style.display = $("ccy").value === "OTHER" ? "" : "none"; if ($("ccy").value === "OTHER") $("ccyother").focus(); updatePreview(); };
   rows().forEach((r) => { r.querySelector(".inc").onchange = updatePreview; r.querySelector(".pct").oninput = updatePreview; });
 
   if (editing) $("cancel").onclick = () => { editingId = null; drawGroup(ctx); };
@@ -536,7 +541,7 @@ function wireForm(ctx, me, editing) {
   $("save").onclick = async (ev) => {
     const err = $("err");
     const description = $("desc").value.trim(), amount = parseFloat($("amt").value);
-    const currency = $("ccy").value.trim().toUpperCase();
+    const currency = getCcy();
     if (!description) { err.textContent = "What was it for?"; return; }
     if (!(amount > 0)) { err.textContent = "Enter an amount more than 0."; return; }
     if (!/^[A-Z]{3}$/.test(currency)) { err.textContent = "Currency must be a 3-letter code, e.g. SGD or MYR."; return; }
