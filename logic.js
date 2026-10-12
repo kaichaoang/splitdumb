@@ -104,6 +104,20 @@ function spendingByCurrency(members, expenses, splits) {
   return out;
 }
 
+// Spending by category, per currency, in cents: { SGD: { total, byCat: { food: 1200, "": 300 } } }
+// "" is "no category". `norm` maps a raw category to its canonical id (unknown values can be folded into "").
+function spendingByCategory(expenses, norm = (c) => c || "") {
+  const out = {};
+  [...expenses].sort((a, b) => curOf(a).localeCompare(curOf(b))).forEach((e) => {
+    const o = (out[curOf(e)] = out[curOf(e)] || { total: 0, byCat: {} });
+    const k = norm(e.category) || "";
+    const cents = Math.round(e.amount * 100);
+    o.total += cents;
+    o.byCat[k] = (o.byCat[k] || 0) + cents;
+  });
+  return out;
+}
+
 // Greedy debt simplification -> [{from, to, cents}]
 function simplifyDebts(bal) {
   const debtors = [], creditors = [];
@@ -129,6 +143,6 @@ function simplifyDebts(bal) {
 if (typeof module !== "undefined") {
   module.exports = {
     equalSplit, percentSplit, equalPercents, computeBalances,
-    balancesByCurrency, spendingByCurrency, simplifyDebts,
+    balancesByCurrency, spendingByCurrency, spendingByCategory, simplifyDebts,
   };
 }

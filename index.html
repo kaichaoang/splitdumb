@@ -131,6 +131,16 @@
   .btns { display:flex; gap:6px; align-items:center; }
   .exp { align-items:flex-start; }
   .exp .title { font-weight:600; }
+  /* ---- statistics bars */
+  .stathead { font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:10px; }
+  .stat + .stat { margin-top:12px; }
+  .stat .row, .stat .person { gap:8px; }
+  .stat .sname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; }
+  .stat .sval { white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .bar { height:8px; border-radius:999px; background:var(--bg); margin-top:6px; overflow:hidden; }
+  .bar > i { display:block; height:100%; min-width:2px; border-radius:999px; background:linear-gradient(90deg,var(--g1),var(--g2)); }
+  .catbadge.sm { width:28px; height:28px; border-radius:8px; }
+  .catbadge.sm svg.ico { width:16px; height:16px; }
   .expmain { display:flex; gap:10px; min-width:0; flex:1; }
   .expmain > div { min-width:0; overflow-wrap:anywhere; }
 
@@ -190,6 +200,13 @@ const CATS = [["", "None"], ["transport", "Transport"], ["food", "Food"], ["util
 const catKey = (c) => (c && CATS.some(([k]) => k === c) ? c : "");
 const catLabel = (c) => (catKey(c) ? CATS.find(([k]) => k === c)[1] : "No category");
 const catIcon = (c) => svg(catKey(c) || "none");
+// one labelled bar: icon, name, amount and % of the total (the numbers carry the meaning; the bar is decoration)
+const statRow = (icon, label, cents, total) => {
+  const pct = total ? (cents / total) * 100 : 0;
+  return `<div class="stat"><div class="row"><span class="person">${icon}<span class="sname">${esc(label)}</span></span>
+    <span class="sval"><b>${money(cents)}</b> <span class="muted">${pct.toFixed(1)}%</span></span></div>
+    <div class="bar" aria-hidden="true"><i style="width:${pct.toFixed(1)}%"></i></div></div>`;
+};
 const TAGS = { new: "New", settled: "Settled", open: "Unsettled" };
 const tagHtml = (k) => `<span class="tag ${k}">${TAGS[k]}</span>`;
 const tripKind = (t) => (!t.expense_count ? "new" : t.settled ? "settled" : "open");
@@ -428,6 +445,7 @@ function drawGroup(ctx) {
   const curs = Object.keys(byCur);
   const debts = curs.flatMap((c) => simplifyDebts(byCur[c]).map((d) => ({ ...d, currency: c })));
   const spend = spendingByCurrency(members, expenses, splits);
+  const catSpend = spendingByCategory(expenses, catKey);
   const kind = !expenses.length ? "new" : debts.length ? "open" : "settled";
 
   // form defaults (new expense, or the one being edited)
@@ -502,6 +520,20 @@ function drawGroup(ctx) {
         return `<div class="card row"><div class="person">${av(m.name)}<span>${esc(m.name)}${youTag(m)}</span></div>
           <span><b>${esc(c)} ${money(r.spent)}</b> <span class="muted">spent · paid ${money(r.paid)}</span></span></div>`; }).join("")).join("")
       + `<div class="muted">Spent = each person's share of the expenses. Paid = what they put up front.</div>`
+      : `<div class="muted">No expenses yet.</div>`}
+
+    </details>
+
+    <details class="sec" data-sec="stats" ${openSecs.has("stats") ? "open" : ""}><summary>Statistics</summary>
+    ${curs.length ? Object.entries(spend).map(([c, s]) => {
+      const people = members.map((m) => ({ m, v: s.byMember[m.id].spent })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
+      const cats = Object.entries(catSpend[c].byCat).sort((a, b) => b[1] - a[1]);
+      return `<div class="cur">${esc(c)} · trip total ${money(s.total)}</div>
+        <div class="card"><div class="stathead">Who spent what</div>
+          ${people.map((x) => statRow(av(x.m.name, "sm"), x.m.name + youTag(x.m), x.v, s.total)).join("")}
+          <div class="muted" style="margin-top:10px">Each person's share of the expenses, as a portion of the trip total.</div></div>
+        <div class="card"><div class="stathead">By category</div>
+          ${cats.map(([k, v]) => statRow(`<span class="catbadge sm ${k ? "" : "none"}">${catIcon(k)}</span>`, catLabel(k), v, catSpend[c].total)).join("")}</div>`; }).join("")
       : `<div class="muted">No expenses yet.</div>`}
 
     </details>

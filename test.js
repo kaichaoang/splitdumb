@@ -86,6 +86,29 @@ const ps = percentSplit(100, [{ id: "a", percent: 70 }, { id: "b", percent: 30 }
 const sp4 = spendingByCurrency([{ id: "a" }, { id: "b" }], pe, ps);
 assert.deepStrictEqual(sp4.SGD.byMember, { a: { paid: 10000, spent: 7000 }, b: { paid: 0, spent: 3000 } });
 
+// ---- spending by category: per currency, uncategorised kept apart, totals match ----
+const ce = [
+  { id: "k1", amount: 12.5, currency: "SGD", category: "food" },
+  { id: "k2", amount: 7.5, currency: "SGD", category: "food" },
+  { id: "k3", amount: 30, currency: "SGD", category: "transport" },
+  { id: "k4", amount: 5, currency: "SGD" },                       // no category (legacy row)
+  { id: "k5", amount: 100, currency: "MYR", category: "gift" },
+  { id: "k6", amount: 9.99, currency: "MYR", category: "mystery" }, // unknown id
+];
+const cs = L.spendingByCategory(ce);
+assert.deepStrictEqual(Object.keys(cs), ["MYR", "SGD"]);
+assert.deepStrictEqual(cs.SGD.byCat, { food: 2000, transport: 3000, "": 500 });
+assert.strictEqual(cs.SGD.total, 5500);
+assert.deepStrictEqual(cs.MYR.byCat, { gift: 10000, mystery: 999 });
+for (const c of Object.keys(cs)) assert.strictEqual(Object.values(cs[c].byCat).reduce((t, v) => t + v, 0), cs[c].total);
+// folding unknown ids into "no category"
+const ok = new Set(["food", "transport", "gift"]);
+assert.deepStrictEqual(L.spendingByCategory(ce, (c) => (ok.has(c) ? c : "")).MYR.byCat, { gift: 10000, "": 999 });
+// and it agrees with the per-person spending totals
+const spAll = spendingByCurrency(m2, ex2, sp2);
+const csAll = L.spendingByCategory(ex2);
+for (const c of Object.keys(spAll)) assert.strictEqual(csAll[c].total, spAll[c].total);
+
 // legacy rows without a currency count as the default currency
 assert.deepStrictEqual(Object.keys(balancesByCurrency(m2, [{ id: "z", amount: 10, paid_by: "y" }], equalSplit(10, ["y", "k"]).map((x) => ({ ...x, expense_id: "z" })), [])), ["SGD"]);
 

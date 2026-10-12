@@ -10,6 +10,7 @@ A minimal Splitwise-style expense splitter. Static site (HTML/JS) on GitHub Page
 - **Categories:** tag an expense as Transport, Food, Utilities, Accommodation or Gift, or leave it as None. The icon shows next to the expense, and the CSV export has a Category column.
 - **Split** equally between chosen people, or **by percentage** (default 50/50, must total 100%).
 - **Multi-currency:** each expense has its own currency. Balances, settle-up and spending are per currency, no conversion.
+- **Statistics:** per currency, each person's portion of the trip's spending and a breakdown by category, as percentages with bars.
 - **Spending per person:** your share of the expenses vs what you paid up front (pay 30 for a coffee in a 2-person group: your spending is 15, the other person owes you 15).
 
 ## Setup
