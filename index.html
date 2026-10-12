@@ -152,7 +152,7 @@ const tripKind = (t) => (!t.expense_count ? "new" : t.settled ? "settled" : "ope
 const getLastCurrency = () => { try { return localStorage.getItem("lastCurrency") || DEFAULT_CURRENCY; } catch { return DEFAULT_CURRENCY; } };
 const setLastCurrency = (c) => { try { localStorage.setItem("lastCurrency", c); } catch {} };
 const friendly = (msg) => /could not find the function|schema cache|permission denied for/i.test(msg || "")
-  ? "The database hasn't been updated yet. Run the latest schema.sql in Supabase, then refresh." : (msg || "Something went wrong");
+  ? `The database hasn't been updated yet. Run the latest schema.sql in Supabase, then refresh. (${msg})` : (msg || "Something went wrong");
 
 // ------------------------------------------------------------------ session + server calls
 // Every data call goes to a server function that checks this token, so you only ever get your own groups.
