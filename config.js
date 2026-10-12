@@ -1,6 +1,6 @@
 // Supabase -> Project Settings -> API. The anon key is safe to publish.
-window.SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co";
-window.SUPABASE_ANON_KEY = "YOUR-ANON-PUBLIC-KEY";
+window.SUPABASE_URL = "https://esnphmnqxbdeygwrusjv.supabase.co";
+window.SUPABASE_ANON_KEY = "sb_publishable_SxXrDDCnLcnK5Jw1pgjGng_BMQcI6ow";
 
 // SHA-256 hash of the app password (the password itself is never stored).
 // Generate with: printf '%s' 'yourpassword' | sha256sum
