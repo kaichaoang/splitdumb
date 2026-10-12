@@ -91,6 +91,8 @@
   button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); width:auto; padding:5px 12px; font-weight:500; margin:0; font-size:14px; }
   button.ghost:hover { color:var(--primary); border-color:var(--primary); filter:none; }
   button.danger:hover { color:var(--bad); border-color:var(--bad); }
+  button.icon { width:36px; height:36px; padding:0; display:inline-grid; place-items:center; border-radius:10px; flex:none; }
+  svg.ico { width:18px; height:18px; display:block; }
   button:disabled { opacity:.5; cursor:default; }
   label.chk { display:flex; align-items:center; gap:9px; padding:5px 0; } label.chk input { width:auto; margin:0; accent-color:var(--primary); }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
@@ -112,8 +114,11 @@
   details.sec[open] > summary::after { transform:rotate(180deg); }
   details.sec[open] > summary { border-bottom:1px solid var(--line); margin-bottom:8px; }
   details.sec .card { box-shadow:none; }
-  .filters { display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; padding:4px 0 10px; }
-  .filters label { font-size:12.5px; color:var(--muted); font-weight:600; } .filters input, .filters select { margin:2px 0 0; padding:8px 10px; font-weight:400; }
+  /* columns appear only while each field gets at least ~165px; on a narrow phone they stack instead of spilling over */
+  .filters { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 165px), 1fr)); gap:6px 10px; padding:4px 0 10px; }
+  .filters label { font-size:12.5px; color:var(--muted); font-weight:600; min-width:0; }
+  .filters input, .filters select { margin:2px 0 0; padding:8px 10px; font-weight:400; min-width:0; max-width:100%; }
+  .filters input[type=date] { -webkit-appearance:none; appearance:none; min-height:38px; }
   .filters button { grid-column:1/-1; justify-self:start; }
   #toasts { position:fixed; z-index:50; top:64px; left:50%; transform:translateX(-50%); width:min(440px,calc(100vw - 24px)); display:flex; flex-direction:column; gap:8px; pointer-events:none; }
   .toast { pointer-events:auto; display:flex; align-items:flex-start; gap:10px; padding:12px 12px 12px 14px; border-radius:14px; background:var(--surface); border:1px solid var(--line);
@@ -126,6 +131,19 @@
   .btns { display:flex; gap:6px; align-items:center; }
   .exp { align-items:flex-start; }
   .exp .title { font-weight:600; }
+  .expmain { display:flex; gap:10px; min-width:0; flex:1; }
+  .expmain > div { min-width:0; overflow-wrap:anywhere; }
+
+  /* ---- categories */
+  .catbadge { width:34px; height:34px; border-radius:10px; flex:none; display:grid; place-items:center; background:var(--primary-soft); color:var(--primary); }
+  .catbadge.none { background:var(--bg); color:var(--muted); }
+  .cats { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 2px; }
+  .catchip { position:relative; display:inline-block; }
+  .catchip input { position:absolute; inset:0; width:100%; height:100%; margin:0; padding:0; opacity:0; cursor:pointer; }
+  .catchip span { display:inline-flex; align-items:center; gap:6px; padding:7px 12px 7px 10px; border-radius:999px; border:1px solid var(--line); background:var(--surface); color:var(--muted); font-size:14px; font-weight:600; }
+  .catchip svg.ico { width:16px; height:16px; }
+  .catchip input:checked + span { background:var(--primary-soft); color:var(--primary); border-color:var(--primary); }
+  .catchip input:focus-visible + span { outline:2px solid var(--primary); outline-offset:2px; }
 </style>
 </head>
 <body>
@@ -155,6 +173,23 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;
 const money = (cents) => (cents / 100).toFixed(2);
 const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const av = (name, cls = "") => `<span class="av ${cls}" style="--h:${hue(name)}" data-i="${esc((String(name).trim()[0] || "?").toUpperCase())}"></span>`;
+// Icons: 24x24 outline paths (Lucide, ISC licence), drawn inline so there is nothing extra to load.
+const ICONS = {
+  edit: `<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>`,
+  trash: `<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>`,
+  none: `<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>`,
+  transport: `<path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/>`,
+  food: `<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>`,
+  utilities: `<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>`,
+  accommodation: `<path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>`,
+  gift: `<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/>`,
+};
+const svg = (name) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
+// Expense categories. "" (none) is the default. The same ids are allowed by save_expense in schema.sql.
+const CATS = [["", "None"], ["transport", "Transport"], ["food", "Food"], ["utilities", "Utilities"], ["accommodation", "Accommodation"], ["gift", "Gift"]];
+const catKey = (c) => (c && CATS.some(([k]) => k === c) ? c : "");
+const catLabel = (c) => (catKey(c) ? CATS.find(([k]) => k === c)[1] : "No category");
+const catIcon = (c) => svg(catKey(c) || "none");
 const TAGS = { new: "New", settled: "Settled", open: "Unsettled" };
 const tagHtml = (k) => `<span class="tag ${k}">${TAGS[k]}</span>`;
 const tripKind = (t) => (!t.expense_count ? "new" : t.settled ? "settled" : "open");
@@ -400,6 +435,7 @@ function drawGroup(ctx) {
   if (!editing) editingId = null;
   const editSplits = editing ? splits.filter((s) => s.expense_id === editing.id) : [];
   splitMode = editing && editing.split_type === "percent" ? "percent" : "equal";
+  const curCat = editing ? catKey(editing.category) : "";
   const checked = new Set(editing ? editSplits.map((s) => s.member_id) : members.map((m) => m.id));
   const pct = {};
   if (editing && editing.split_type === "percent") editSplits.forEach((s) => (pct[s.member_id] = Number(s.percent)));
@@ -408,7 +444,7 @@ function drawGroup(ctx) {
   app.innerHTML = `
     <a class="back" href="#/">← All trips</a>
     <div class="row" style="margin-bottom:2px">
-      <div class="person"><h2 class="page">${esc(group.name)}</h2><button class="ghost" id="rename" title="Rename trip" aria-label="Rename trip">✎</button>${tagHtml(kind)}</div>
+      <div class="person"><h2 class="page">${esc(group.name)}</h2><button class="ghost icon" id="rename" title="Rename trip" aria-label="Rename trip">${svg("edit")}</button>${tagHtml(kind)}</div>
       <button class="ghost" id="copy">Copy link</button></div>
     <div class="muted">${members.length} people · you are ${esc(me.name)}</div>
 
@@ -421,6 +457,9 @@ function drawGroup(ctx) {
           return `<select id="ccy" aria-label="Currency">${(known ? CURRENCIES : [[cur, ""], ...CURRENCIES]).map(([c, n]) => `<option value="${c}" ${c === cur ? "selected" : ""}>${c}${n ? " · " + n : ""}</option>`).join("")}<option value="OTHER">Other…</option></select>`; })()}
         <input id="ccyother" class="upper" maxlength="3" placeholder="3-letter code" style="display:none;grid-column:1/-1">
       </div>
+      <div class="muted" style="margin-top:6px">Category</div>
+      <div class="cats" role="radiogroup" aria-label="Category">${CATS.map(([k, label]) =>
+        `<label class="catchip"><input type="radio" name="cat" value="${k}" ${k === curCat ? "checked" : ""}><span>${catIcon(k)}${label}</span></label>`).join("")}</div>
       <div class="muted" style="margin-top:6px">Paid by</div>
       <select id="payer">${members.map((m) => `<option value="${m.id}" ${m.id === (editing ? editing.paid_by : meId) ? "selected" : ""}>${esc(m.name)}${youTag(m)}</option>`).join("")}</select>
       <div class="muted" style="margin-top:6px">Split</div>
@@ -521,10 +560,11 @@ function drawGroup(ctx) {
       const line2 = (mine ? `Your share: ${esc(curOf(e))} ${Number(mine.share).toFixed(2)}` : "You're not in this split")
         + (e.split_type === "percent" ? " · " + sp.map((s) => `${esc(name[s.member_id] || "?")} ${Number(s.percent)}%`).join(", ") : "");
       return `<div class="card row exp">
+        <div class="expmain"><span class="catbadge ${catKey(e.category) ? "" : "none"}" title="${esc(catLabel(e.category))}">${catIcon(e.category)}</span>
         <div><div class="title">${esc(e.description)}</div>
           <div class="muted">${esc(name[e.paid_by] || "?")} paid ${esc(curOf(e))} ${Number(e.amount).toFixed(2)} · ${new Date(e.created_at).toLocaleDateString()}${e.added_by && name[e.added_by] ? ` · added by ${esc(name[e.added_by])}` : ""}</div>
-          <div class="muted">${line2}</div></div>
-        <div class="btns"><button class="ghost" data-edit="${e.id}">Edit</button><button class="ghost danger" data-del="${e.id}">Delete</button></div></div>`; }).join("")
+          <div class="muted">${line2}</div></div></div>
+        <div class="btns"><button class="ghost icon" data-edit="${e.id}" title="Edit" aria-label="Edit expense">${svg("edit")}</button><button class="ghost icon danger" data-del="${e.id}" title="Delete" aria-label="Delete expense">${svg("trash")}</button></div></div>`; }).join("")
       : `<div class="muted" style="padding:6px 0 12px">${expenses.length ? "No expenses match these filters." : "No expenses yet."}</div>`;
     document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => {
       editingId = b.dataset.edit; drawGroup(ctx);
@@ -543,10 +583,10 @@ function drawGroup(ctx) {
   if (expenses.length) $("f_csv").onclick = () => {
     const cell = (v) => { let t = v == null ? "" : String(v); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;   // stop spreadsheet formula injection
       return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
-    const head = ["Date", "Description", "Amount", "Currency", "Paid by", "Added by", "Split", ...members.map((m) => `Share: ${m.name}`)];
+    const head = ["Date", "Description", "Category", "Amount", "Currency", "Paid by", "Added by", "Split", ...members.map((m) => `Share: ${m.name}`)];
     const rows = [...shown].sort((a, b) => a.created_at.localeCompare(b.created_at)).map((e) => {
       const sp = splits.filter((s) => s.expense_id === e.id);
-      return [localDay(e.created_at), e.description, Number(e.amount).toFixed(2), curOf(e), name[e.paid_by] || "", name[e.added_by] || "", e.split_type || "equal",
+      return [localDay(e.created_at), e.description, catKey(e.category) ? catLabel(e.category) : "", Number(e.amount).toFixed(2), curOf(e), name[e.paid_by] || "", name[e.added_by] || "", e.split_type || "equal",
         ...members.map((m) => { const s = sp.find((x) => x.member_id === m.id); return s ? Number(s.share).toFixed(2) : ""; })];
     });
     const csv = "\ufeff" + [head, ...rows].map((r) => r.map(cell).join(",")).join("\r\n");
@@ -638,11 +678,13 @@ function wireForm(ctx, me, editing) {
         split = percentSplit(amount, rows().map((r) => ({ id: r.dataset.id, percent: parseFloat(r.querySelector(".pct").value) || 0 })));
       }
     } catch (e) { toast(e.message); return; }
+    const picked = document.querySelector('input[name="cat"]:checked');
     ev.target.disabled = true;
     try {
       await call("save_expense", {
         p_id: editing ? editing.id : null, p_group: id, p_description: description, p_amount: amount,
-        p_currency: currency, p_paid_by: $("payer").value, p_split_type: splitMode, p_splits: split });
+        p_currency: currency, p_paid_by: $("payer").value, p_split_type: splitMode, p_splits: split,
+        p_category: picked ? picked.value : "" });
       setLastCurrency(currency);
       route();
     } catch (e) { showErr(err, e); ev.target.disabled = false; }

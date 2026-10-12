@@ -71,6 +71,7 @@ alter table expenses  add column if not exists currency     text not null defaul
 alter table payments  add column if not exists currency     text not null default 'SGD';
 alter table expenses  add column if not exists split_type   text not null default 'equal';
 alter table expenses  add column if not exists added_by     uuid references members(id) on delete set null;
+alter table expenses  add column if not exists category     text not null default '';   -- '' = no category
 alter table splits    add column if not exists percent      numeric(6,3);
 alter table members   add column if not exists user_id      uuid references app_users(id) on delete set null;
 alter table app_users add column if not exists display_name text;
@@ -99,6 +100,7 @@ end $$;
 
 -- ------------------------------------------------------- remove old versions
 drop function if exists save_expense(uuid, uuid, text, numeric, text, uuid, uuid, text, jsonb);
+drop function if exists save_expense(text, uuid, uuid, text, numeric, text, uuid, text, jsonb);   -- before categories
 drop function if exists register_user(text, text);
 drop function if exists login_user(text, text);
 
@@ -347,9 +349,10 @@ end $$;
 -- Create (p_id null) or update an expense and its splits in ONE transaction.
 -- "Added by" is always the caller, set by the server.
 -- p_splits: [{"member_id": "...", "share": 15.00, "percent": 50}]  (percent only for split_type 'percent')
+-- p_category: '' (none) or one of transport, food, utilities, accommodation, gift. Optional, so older callers still work.
 create or replace function save_expense(
   p_token text, p_id uuid, p_group uuid, p_description text, p_amount numeric, p_currency text,
-  p_paid_by uuid, p_split_type text, p_splits jsonb
+  p_paid_by uuid, p_split_type text, p_splits jsonb, p_category text default ''
 ) returns uuid
 language plpgsql security definer set search_path = public, extensions, pg_temp
 as $$
@@ -358,9 +361,11 @@ declare
   mid uuid := member_of(uid, p_group);
   v_id uuid := p_id;
   v_desc text := btrim(coalesce(p_description, ''));
+  v_cat text := btrim(coalesce(p_category, ''));
   v_total numeric;
 begin
   if v_desc = '' or length(v_desc) > 120 then raise exception 'Description must be 1-120 characters'; end if;
+  if v_cat not in ('', 'transport', 'food', 'utilities', 'accommodation', 'gift') then raise exception 'Unknown category'; end if;
   if p_split_type not in ('equal', 'percent') then raise exception 'Bad split type'; end if;
   if p_currency is null or p_currency !~ '^[A-Z]{3}$' then raise exception 'Currency must be a 3-letter code'; end if;
   if p_amount is null or p_amount <= 0 then raise exception 'Amount must be more than 0'; end if;
@@ -383,13 +388,13 @@ begin
   end if;
 
   if v_id is null then
-    insert into expenses(group_id, description, amount, currency, paid_by, added_by, split_type)
-    values (p_group, v_desc, p_amount, p_currency, p_paid_by, mid, p_split_type)
+    insert into expenses(group_id, description, amount, currency, paid_by, added_by, split_type, category)
+    values (p_group, v_desc, p_amount, p_currency, p_paid_by, mid, p_split_type, v_cat)
     returning id into v_id;
   else
     update expenses
        set description = v_desc, amount = p_amount, currency = p_currency,
-           paid_by = p_paid_by, split_type = p_split_type
+           paid_by = p_paid_by, split_type = p_split_type, category = v_cat
      where id = v_id and group_id = p_group;
     if not found then raise exception 'Expense not found'; end if;
     delete from splits where expense_id = v_id;
@@ -455,7 +460,7 @@ grant execute on function
   change_password(text, text, text), set_display_name(text, text),
   my_groups(text), create_group(text, text, text[]), rename_group(text, uuid, text), get_group(text, uuid),
   add_member(text, uuid, text, text), link_member(text, uuid, text),
-  save_expense(text, uuid, uuid, text, numeric, text, uuid, text, jsonb),
+  save_expense(text, uuid, uuid, text, numeric, text, uuid, text, jsonb, text),
   delete_expense(text, uuid), add_payment(text, uuid, uuid, uuid, numeric, text)
   to anon, authenticated;
 
