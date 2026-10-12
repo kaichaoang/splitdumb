@@ -94,6 +94,10 @@
   button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); width:auto; padding:5px 12px; font-weight:500; margin:0; font-size:14px; }
   button.ghost:hover { color:var(--primary); border-color:var(--primary); filter:none; }
   button.danger:hover { color:var(--bad); border-color:var(--bad); }
+  /* Save / Cancel row of the expense form: same height and type size, Save a bit wider */
+  .formbtns { display:flex; gap:8px; margin-top:8px; }
+  .formbtns button, .formbtns button.ghost { flex:1; width:auto; height:44px; padding:0 14px; margin:0; font-size:16px; font-weight:700; }
+  .formbtns button:first-child { flex:2; }
   button.icon { width:36px; height:36px; padding:0; display:inline-grid; place-items:center; border-radius:10px; flex:none; }
   svg.ico { width:18px; height:18px; display:block; }
   button:disabled { opacity:.5; cursor:default; }
@@ -203,11 +207,12 @@ const ICONS = {
   food: `<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>`,
   utilities: `<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>`,
   accommodation: `<path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>`,
+  entertainment: `<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>`,
   gift: `<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/>`,
 };
 const svg = (name) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
 // Expense categories. "" (none) is the default. The same ids are allowed by save_expense in schema.sql.
-const CATS = [["", "None"], ["transport", "Transport"], ["food", "Food"], ["utilities", "Utilities"], ["accommodation", "Accommodation"], ["gift", "Gift"]];
+const CATS = [["", "None"], ["transport", "Transport"], ["food", "Food"], ["utilities", "Utilities"], ["accommodation", "Accommodation"], ["gift", "Gift"], ["entertainment", "Entertainment"]];
 const catKey = (c) => (c && CATS.some(([k]) => k === c) ? c : "");
 const catLabel = (c) => (catKey(c) ? CATS.find(([k]) => k === c)[1] : "No category");
 const catIcon = (c) => svg(catKey(c) || "none");
@@ -236,7 +241,7 @@ const statCard = (title, parts, total, cur, note) => `<div class="card"><div cla
   <div class="statchart">${parts.length > 1 ? donut(parts, total, cur, `${title}: ` + parts.map((p) => `${p.label} ${((p.cents / total) * 100).toFixed(1)}%`).join(", ")) : ""}
     <div class="statrows">${parts.map((p) => statRow(p.icon, p.label, p.cents, total, p.color)).join("")}</div></div>
   ${note ? `<div class="muted" style="margin-top:10px">${note}</div>` : ""}</div>`;
-const CATCOLOR = { accommodation: 0, food: 1, utilities: 2, transport: 4, gift: 5, "": 7 };
+const CATCOLOR = { accommodation: 0, food: 1, utilities: 2, entertainment: 3, transport: 4, gift: 5, "": 7 };
 const TAGS = { new: "New", settled: "Settled", open: "Unsettled" };
 const tagHtml = (k) => `<span class="tag ${k}">${TAGS[k]}</span>`;
 const tripKind = (t) => (!t.expense_count ? "new" : t.settled ? "settled" : "open");
@@ -682,7 +687,7 @@ function formHtml(ctx, editing) {
           <span class="prev muted"></span></div>`).join("")}
         <div data-f="pcttotal" class="muted"></div>
       </div>
-      <div class="btns" style="margin-top:8px">
+      <div class="formbtns">
         <button type="button" data-f="save">${editing ? "Save changes" : "Add expense"}</button>
         ${editing ? `<button data-f="cancel" class="ghost" type="button">Cancel</button>` : ""}
       </div>`;
