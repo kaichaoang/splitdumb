@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SplitLite</title>
+<title>SplitDumb</title>
 <style>
   :root { --bg:#f6f7f9; --card:#fff; --ink:#1c2430; --muted:#6b7686; --accent:#1fa971; --red:#d64545; --line:#e4e8ee; }
   @media (prefers-color-scheme: dark) {
@@ -14,6 +14,7 @@
   main { max-width:640px; margin:0 auto; padding:16px; }
   h1 { font-size:22px; margin:8px 0 16px; } h1 a { color:inherit; text-decoration:none; }
   h2 { font-size:15px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:24px 0 8px; }
+  a { color:var(--accent); }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:8px; }
   .row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
   .muted { color:var(--muted); font-size:14px; }
@@ -21,17 +22,28 @@
   .pos { color:var(--accent); font-weight:600; } .neg { color:var(--red); font-weight:600; }
   input, select, button { font:inherit; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); width:100%; margin:4px 0; }
   button { background:var(--accent); color:#fff; border:0; cursor:pointer; font-weight:600; }
-  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); width:auto; padding:4px 10px; font-weight:400; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); width:auto; padding:4px 10px; font-weight:400; margin:0; }
   button:disabled { opacity:.5; }
   label.chk { display:flex; align-items:center; gap:8px; padding:4px 0; } label.chk input { width:auto; margin:0; }
-  .err { color:var(--red); margin:8px 0; }
+  .err { color:var(--red); margin:8px 0; font-size:14px; }
   .grid2 { display:grid; grid-template-columns:2fr 1fr; gap:8px; }
   .upper { text-transform:uppercase; }
+  .seg { display:flex; gap:6px; margin:6px 0; }
+  .segbtn { background:transparent; color:var(--muted); border:1px solid var(--line); flex:1; width:auto; font-weight:500; }
+  .segbtn.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .srow { display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:8px; padding:2px 0; }
+  .srow .pctwrap { display:none; align-items:center; gap:4px; }
+  .srow .pct { width:88px; margin:0; text-align:right; }
+  .prev { min-width:84px; text-align:right; font-variant-numeric:tabular-nums; }
+  #splitbox.mode-percent .pctwrap { display:flex; }
+  #splitbox.mode-percent .who { display:none; }
+  #splitbox:not(.mode-percent) #pcttotal { display:none; }
+  .btns { display:flex; gap:6px; }
 </style>
 </head>
 <body>
 <main>
-  <h1><a href="#/">SplitLite</a></h1>
+  <div id="top"></div>
   <div id="app">Loading…</div>
 </main>
 
@@ -40,94 +52,133 @@
 <script src="logic.js"></script>
 <script>
 const app = document.getElementById("app");
+const $ = (id) => document.getElementById(id);
 const configured = window.SUPABASE_URL && !window.SUPABASE_URL.includes("YOUR-PROJECT");
 const sb = configured ? supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY) : null;
 
 const CURRENCIES = ["SGD","MYR","USD","EUR","GBP","JPY","THB","IDR","AUD","CNY","HKD","KRW","VND","PHP","INR","TWD"];
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const money = (cents) => (cents / 100).toFixed(2);
-const getSaved = () => { try { return JSON.parse(localStorage.getItem("groups") || "[]"); } catch { return []; } };
-const saveGroup = (g) => {
-  try { const all = getSaved().filter((x) => x.id !== g.id); all.unshift({ id: g.id, name: g.name });
-        localStorage.setItem("groups", JSON.stringify(all)); } catch {}
-};
 const getLastCurrency = () => { try { return localStorage.getItem("lastCurrency") || DEFAULT_CURRENCY; } catch { return DEFAULT_CURRENCY; } };
 const setLastCurrency = (c) => { try { localStorage.setItem("lastCurrency", c); } catch {} };
-const fail = (e) => { app.innerHTML = `<div class="err">${esc(e.message || e)}</div><a href="#/">Back</a>`; };
+const friendly = (msg) => /could not find the function|schema cache/i.test(msg || "")
+  ? "The database hasn't been updated yet. Run the latest schema.sql in Supabase, then refresh." : (msg || "Something went wrong");
+const fail = (e) => { app.innerHTML = `<div class="err">${esc(friendly(e.message || e))}</div><a href="#/">Back</a>`; };
 
-// Simple password gate (client-side only: deters casual visitors, not a determined attacker).
-async function sha256(s) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+// ------------------------------------------------------------------ session
+// Client-side only: remembers who you are on this device. See README for the security limits.
+let user = null;
+try { user = JSON.parse(localStorage.getItem("user") || "null"); } catch {}
+function setUser(u) {
+  user = u;
+  try { u ? localStorage.setItem("user", JSON.stringify(u)) : localStorage.removeItem("user"); } catch {}
 }
-const isUnlocked = () => { try { return localStorage.getItem("unlocked") === window.APP_PASSWORD_SHA256; } catch { return false; } };
-
-function renderLogin() {
-  app.innerHTML = `<div class="card">
-    <input id="pw" type="password" placeholder="Password" autofocus>
-    <button id="login">Unlock</button>
-    <div id="err" class="err"></div></div>`;
-  const go = async () => {
-    if ((await sha256(pw.value)) === window.APP_PASSWORD_SHA256) {
-      try { localStorage.setItem("unlocked", window.APP_PASSWORD_SHA256); } catch {}
-      route();
-    } else err.textContent = "Wrong password.";
+function renderTop() {
+  $("top").innerHTML = `<div class="row"><h1><a href="#/">SplitDumb</a></h1>
+    ${user ? `<span class="muted">${esc(user.username)} <button class="ghost" id="logout">Log out</button></span>` : ""}</div>`;
+  const lo = $("logout");
+  if (lo) lo.onclick = () => {
+    setUser(null); authMode = "login";
+    if (location.hash === "#/") route(); else location.hash = "#/";   // hashchange re-renders
   };
-  document.getElementById("login").onclick = go;
-  pw.onkeydown = (e) => { if (e.key === "Enter") go(); };
 }
 
+// ------------------------------------------------------------------ login / sign up
+let authMode = "login";
+function renderAuth() {
+  const signup = authMode === "signup";
+  app.innerHTML = `<div class="card">
+    <div class="seg">
+      <button type="button" class="segbtn ${signup ? "" : "on"}" data-m="login">Log in</button>
+      <button type="button" class="segbtn ${signup ? "on" : ""}" data-m="signup">Create account</button>
+    </div>
+    <input id="u" placeholder="Username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+    <input id="p" type="password" placeholder="Password" autocomplete="${signup ? "new-password" : "current-password"}">
+    ${signup ? `<input id="p2" type="password" placeholder="Confirm password" autocomplete="new-password">` : ""}
+    <button id="go">${signup ? "Create account" : "Log in"}</button>
+    <div id="err" class="err"></div>
+    ${signup ? `<div class="muted">Username: 2-20 letters, numbers, . _ - &nbsp;·&nbsp; Password: at least 6 characters.</div>` : ""}
+  </div>`;
+  document.querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => { authMode = b.dataset.m; renderAuth(); }));
+  const go = async () => {
+    const username = $("u").value.trim(), password = $("p").value;
+    if (!username || !password) { $("err").textContent = "Enter a username and password."; return; }
+    if (signup && password !== $("p2").value) { $("err").textContent = "Passwords don't match."; return; }
+    $("go").disabled = true;
+    const { data, error } = await sb.rpc(signup ? "register_user" : "login_user", { p_username: username, p_password: password });
+    if (error) { $("err").textContent = friendly(error.message); $("go").disabled = false; return; }
+    setUser({ id: data.id, username: data.username });
+    route();
+  };
+  $("go").onclick = go;
+  ["u", "p", "p2"].forEach((id) => { const el = $(id); if (el) el.onkeydown = (e) => { if (e.key === "Enter") go(); }; });
+}
+
+// ------------------------------------------------------------------ routing
 async function route() {
-  if (!window.APP_PASSWORD_SHA256) {
-    app.innerHTML = `<div class="card">No password set. Add <code>APP_PASSWORD_SHA256</code> to <code>config.js</code>.</div>`;
-    return;
-  }
-  if (!isUnlocked()) return renderLogin();
+  renderTop();
   if (!configured) {
-    app.innerHTML = `<div class="card">Set your Supabase URL and anon key in <code>config.js</code> first.</div>`;
+    app.innerHTML = `<div class="card">Set your Supabase URL and key in <code>config.js</code> first.</div>`;
     return;
   }
+  if (!user) return renderAuth();
   const m = location.hash.match(/^#\/g\/([0-9a-f-]{36})$/i);
-  try { m ? await renderGroup(m[1]) : renderHome(); } catch (e) { fail(e); }
+  try { m ? await renderGroup(m[1]) : await renderHome(); } catch (e) { fail(e); }
 }
 
-function renderHome() {
-  const saved = getSaved();
+// ------------------------------------------------------------------ home
+async function renderHome() {
+  const { data, error } = await sb.from("members").select("group_id, groups(id, name)").eq("user_id", user.id);
+  if (error) throw error;
+  const seen = new Set(), groups = [];
+  (data || []).forEach((r) => { const g = r.groups; if (g && !seen.has(g.id)) { seen.add(g.id); groups.push(g); } });
+  groups.sort((a, b) => a.name.localeCompare(b.name));
+
   app.innerHTML = `
     <h2>Your groups</h2>
-    ${saved.length ? saved.map((g) => `<a class="card row" href="#/g/${g.id}" style="text-decoration:none;color:inherit">
+    ${groups.length ? groups.map((g) => `<a class="card row" href="#/g/${g.id}" style="text-decoration:none;color:inherit">
         <span>${esc(g.name)}</span><span class="muted">open →</span></a>`).join("")
-      : `<div class="muted">No groups yet on this device.</div>`}
+      : `<div class="muted">No groups yet. Create one below, or join with a link.</div>`}
     <h2>New group</h2>
     <div class="card">
       <input id="gname" placeholder="Group name (e.g. Bali trip)">
-      <input id="gmembers" placeholder="Members, comma separated (e.g. Ana, Ben, Chen)">
+      <input id="gmembers" placeholder="Other people, comma separated (e.g. Ana, Ben)">
+      <div class="muted">You (${esc(user.username)}) are added automatically.</div>
       <button id="create">Create group</button>
       <div id="err" class="err"></div>
     </div>
-    <h2>Join with a code</h2>
+    <h2>Join with a link</h2>
     <div class="card">
-      <input id="code" placeholder="Paste group code or link">
-      <button id="join">Join</button>
+      <input id="code" placeholder="Paste group link or code">
+      <button id="join">Open</button>
+      <div id="jerr" class="err"></div>
     </div>`;
-  document.getElementById("create").onclick = async (ev) => {
-    const name = gname.value.trim();
-    const names = [...new Set(gmembers.value.split(",").map((s) => s.trim()).filter(Boolean))];
-    if (!name || names.length < 2) { err.textContent = "Need a name and at least 2 members."; return; }
+
+  $("create").onclick = async (ev) => {
+    const name = $("gname").value.trim();
+    const seenNames = new Set([user.username.toLowerCase()]);
+    const others = $("gmembers").value.split(",").map((s) => s.trim()).filter((n) => {
+      if (!n || seenNames.has(n.toLowerCase())) return false; seenNames.add(n.toLowerCase()); return true; });
+    if (!name || others.length < 1) { $("err").textContent = "Need a group name and at least one other person."; return; }
     ev.target.disabled = true;
-    const { data: g, error } = await sb.from("groups").insert({ name }).select().single();
-    if (error) { err.textContent = error.message; ev.target.disabled = false; return; }
-    const { error: e2 } = await sb.from("members").insert(names.map((n) => ({ group_id: g.id, name: n })));
-    if (e2) { err.textContent = e2.message; ev.target.disabled = false; return; }
-    saveGroup(g); location.hash = `#/g/${g.id}`;
+    const { data: g, error: e1 } = await sb.from("groups").insert({ name }).select().single();
+    if (e1) { $("err").textContent = e1.message; ev.target.disabled = false; return; }
+    const rows = [{ group_id: g.id, name: user.username, user_id: user.id }, ...others.map((n) => ({ group_id: g.id, name: n }))];
+    const { error: e2 } = await sb.from("members").insert(rows);
+    if (e2) { $("err").textContent = e2.message; ev.target.disabled = false; return; }
+    location.hash = `#/g/${g.id}`;
   };
-  document.getElementById("join").onclick = () => {
-    const id = (code.value.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
-    if (id) location.hash = `#/g/${id}`; else err.textContent = "That doesn't look like a group code.";
+  $("join").onclick = () => {
+    const id = ($("code").value.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
+    if (id) location.hash = `#/g/${id}`; else $("jerr").textContent = "That doesn't look like a group link.";
   };
 }
 
-async function renderGroup(id) {
+// ------------------------------------------------------------------ group
+let editingId = null;   // expense being edited, if any
+let splitMode = "equal";
+
+async function loadGroup(id) {
   const [g, mem, exp, pay] = await Promise.all([
     sb.from("groups").select("*").eq("id", id).maybeSingle(),
     sb.from("members").select("*").eq("group_id", id).order("name"),
@@ -139,79 +190,151 @@ async function renderGroup(id) {
   const expIds = exp.data.map((e) => e.id);
   const spl = expIds.length ? await sb.from("splits").select("*").in("expense_id", expIds) : { data: [] };
   if (spl.error) throw spl.error;
+  return { id, group: g.data, members: mem.data, expenses: exp.data, payments: pay.data, splits: spl.data };
+}
 
-  saveGroup(g.data);
-  const members = mem.data, expenses = exp.data, payments = pay.data, splits = spl.data;
+async function renderGroup(id) {
+  editingId = null;
+  drawGroup(await loadGroup(id));
+}
+
+function drawGroup(ctx) {
+  const { id, group, members, expenses, payments, splits } = ctx;
+  const me = members.find((m) => m.user_id === user.id) || null;
   const name = Object.fromEntries(members.map((m) => [m.id, m.name]));
+  const youTag = (m) => (me && m.id === me.id ? " (you)" : "");
 
-  // Balances are kept per currency; currencies are never converted or mixed.
+  // balances & spending are kept per currency; currencies are never converted or mixed
   const byCur = balancesByCurrency(members, expenses, splits, payments);
   const curs = Object.keys(byCur);
   const debts = curs.flatMap((c) => simplifyDebts(byCur[c]).map((d) => ({ ...d, currency: c })));
+  const spend = spendingByCurrency(members, expenses, splits);
+
+  // form defaults (new expense, or the one being edited)
+  const editing = editingId ? expenses.find((e) => e.id === editingId) || null : null;
+  if (!editing) editingId = null;
+  const editSplits = editing ? splits.filter((s) => s.expense_id === editing.id) : [];
+  splitMode = editing && editing.split_type === "percent" ? "percent" : "equal";
+  const checked = new Set(editing ? editSplits.map((s) => s.member_id) : members.map((m) => m.id));
+  const pct = {};
+  if (editing && editing.split_type === "percent") editSplits.forEach((s) => (pct[s.member_id] = Number(s.percent)));
+  else equalPercents([...checked]).forEach((e) => (pct[e.id] = e.percent));
+
+  const unclaimed = members.filter((m) => !m.user_id);
 
   app.innerHTML = `
-    <div class="row"><h2 style="margin:0">${esc(g.data.name)}</h2>
+    <div class="row"><h2 style="margin:0">${esc(group.name)}</h2>
       <button class="ghost" id="copy">Copy invite link</button></div>
+
+    ${me ? "" : `<h2>Join this group</h2>
+    <div class="card">
+      <div class="muted">Which one are you?</div>
+      <select id="claim">
+        ${unclaimed.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join("")}
+        <option value="__new">I'm new here: add me as ${esc(user.username)}</option>
+      </select>
+      <button id="joinbtn">Join</button>
+      <div id="err" class="err"></div>
+    </div>`}
 
     <h2>Balances</h2>
     ${curs.length ? curs.map((c) => `<div class="cur">${esc(c)}</div>` + members.map((m) => { const b = byCur[c][m.id];
-      return `<div class="card row"><span>${esc(m.name)}</span>
+      return `<div class="card row"><span>${esc(m.name)}${youTag(m)}</span>
         <span class="${b > 0 ? "pos" : b < 0 ? "neg" : "muted"}">${b > 0 ? "gets back " + esc(c) + " " + money(b) : b < 0 ? "owes " + esc(c) + " " + money(-b) : "settled"}</span></div>`; }).join("")).join("")
       : `<div class="muted">No expenses yet.</div>`}
 
     <h2>Settle up</h2>
     ${debts.length ? debts.map((d, i) => `<div class="card row">
         <span>${esc(name[d.from])} pays ${esc(name[d.to])} <b>${esc(d.currency)} ${money(d.cents)}</b></span>
-        <button class="ghost" data-settle="${i}">Mark paid</button></div>`).join("")
+        ${me ? `<button class="ghost" data-settle="${i}">Mark paid</button>` : ""}</div>`).join("")
       : `<div class="muted">Everyone is settled up.</div>`}
 
-    <h2>Add expense</h2>
-    <div class="card">
-      <input id="desc" placeholder="What was it for?">
-      <div class="grid2">
-        <input id="amt" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Amount">
-        <input id="ccy" class="upper" list="ccylist" maxlength="3" value="${esc(getLastCurrency())}" placeholder="CUR" aria-label="Currency">
-        <datalist id="ccylist">${CURRENCIES.map((c) => `<option value="${c}">`).join("")}</datalist>
-      </div>
-      <select id="payer">${members.map((m) => `<option value="${m.id}">${esc(m.name)} paid</option>`).join("")}</select>
-      <div class="muted">Split equally between:</div>
-      ${members.map((m) => `<label class="chk"><input type="checkbox" class="who" value="${m.id}" checked>${esc(m.name)}</label>`).join("")}
-      <button id="addexp">Add expense</button>
-      <div id="err" class="err"></div>
-    </div>
-
-    <h2>Expenses</h2>
-    ${expenses.length ? expenses.map((e) => `<div class="card row">
-        <div><div>${esc(e.description)}</div>
-          <div class="muted">${esc(name[e.paid_by] || "?")} paid ${esc(curOf(e))} ${Number(e.amount).toFixed(2)} · ${new Date(e.created_at).toLocaleDateString()}</div></div>
-        <button class="ghost" data-del="${e.id}">Delete</button></div>`).join("")
+    <h2>Spending</h2>
+    ${curs.length ? Object.entries(spend).map(([c, s]) => `<div class="cur">${esc(c)} · group total ${money(s.total)}</div>` +
+      members.map((m) => { const r = s.byMember[m.id];
+        return `<div class="card row"><span>${esc(m.name)}${youTag(m)}</span>
+          <span><b>${esc(c)} ${money(r.spent)}</b> <span class="muted">spent · paid ${money(r.paid)}</span></span></div>`; }).join("")).join("")
+      + `<div class="muted">Spent = each person's share of the expenses. Paid = what they put up front.</div>`
       : `<div class="muted">No expenses yet.</div>`}
 
-    <h2>Add member</h2>
-    <div class="card"><input id="newm" placeholder="Name"><button id="addm">Add</button></div>`;
+    ${me ? `<h2>${editing ? "Edit expense" : "Add expense"}</h2>
+    <div class="card" id="expform">
+      <input id="desc" placeholder="What was it for?" value="${editing ? esc(editing.description) : ""}">
+      <div class="grid2">
+        <input id="amt" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Amount" value="${editing ? Number(editing.amount).toFixed(2) : ""}">
+        <input id="ccy" class="upper" list="ccylist" maxlength="3" value="${esc(editing ? curOf(editing) : getLastCurrency())}" placeholder="CUR" aria-label="Currency">
+        <datalist id="ccylist">${CURRENCIES.map((c) => `<option value="${c}">`).join("")}</datalist>
+      </div>
+      <div class="muted" style="margin-top:6px">Paid by</div>
+      <select id="payer">${members.map((m) => `<option value="${m.id}" ${m.id === (editing ? editing.paid_by : me.id) ? "selected" : ""}>${esc(m.name)}${youTag(m)}</option>`).join("")}</select>
+      <div class="muted" style="margin-top:6px">Split</div>
+      <div class="seg">
+        <button type="button" class="segbtn ${splitMode === "equal" ? "on" : ""}" data-mode="equal">Equally</button>
+        <button type="button" class="segbtn ${splitMode === "percent" ? "on" : ""}" data-mode="percent">By %</button>
+      </div>
+      <div id="splitbox" class="${splitMode === "percent" ? "mode-percent" : ""}">
+        ${members.map((m) => `<div class="srow" data-id="${m.id}">
+          <label class="chk"><input type="checkbox" class="who" value="${m.id}" ${checked.has(m.id) ? "checked" : ""}><span>${esc(m.name)}${youTag(m)}</span></label>
+          <span class="pctwrap"><input class="pct" type="number" step="0.001" min="0" max="100" inputmode="decimal" value="${pct[m.id] ?? 0}"><span class="muted">%</span></span>
+          <span class="prev muted"></span></div>`).join("")}
+        <div id="pcttotal" class="muted"></div>
+      </div>
+      <div class="btns" style="margin-top:6px">
+        <button id="save">${editing ? "Save changes" : "Add expense"}</button>
+        ${editing ? `<button id="cancel" class="segbtn" type="button">Cancel</button>` : ""}
+      </div>
+      <div id="err" class="err"></div>
+    </div>` : ""}
 
-  document.getElementById("copy").onclick = async (ev) => {
+    <h2>Expenses</h2>
+    ${expenses.length ? expenses.map((e) => {
+      const sp = splits.filter((s) => s.expense_id === e.id);
+      const mine = me ? sp.find((s) => s.member_id === me.id) : null;
+      const line2 = (me ? (mine ? `Your share: ${esc(curOf(e))} ${Number(mine.share).toFixed(2)}` : "You're not in this split") : "")
+        + (e.split_type === "percent" ? (me ? " · " : "") + sp.map((s) => `${esc(name[s.member_id] || "?")} ${Number(s.percent)}%`).join(", ") : "");
+      return `<div class="card row">
+        <div><div>${esc(e.description)}</div>
+          <div class="muted">${esc(name[e.paid_by] || "?")} paid ${esc(curOf(e))} ${Number(e.amount).toFixed(2)} · ${new Date(e.created_at).toLocaleDateString()}${e.added_by && name[e.added_by] ? ` · added by ${esc(name[e.added_by])}` : ""}</div>
+          ${line2 ? `<div class="muted">${line2}</div>` : ""}</div>
+        ${me ? `<div class="btns"><button class="ghost" data-edit="${e.id}">Edit</button><button class="ghost" data-del="${e.id}">Delete</button></div>` : ""}</div>`; }).join("")
+      : `<div class="muted">No expenses yet.</div>`}
+
+    <h2>Members</h2>
+    <div class="card">
+      <div class="muted">${members.map((m) => esc(m.name) + youTag(m) + (m.user_id ? "" : " (no account yet)")).join(" · ")}</div>
+      ${me ? `<input id="newm" placeholder="Add someone by name"><button id="addm">Add</button>` : ""}
+    </div>`;
+
+  // ---- wiring
+  $("copy").onclick = async (ev) => {
     const url = location.href;
     try { await navigator.clipboard.writeText(url); ev.target.textContent = "Copied!"; }
     catch { prompt("Copy this link:", url); }
   };
 
-  document.getElementById("addexp").onclick = async (ev) => {
-    const description = desc.value.trim(), amount = parseFloat(amt.value);
-    const currency = document.getElementById("ccy").value.trim().toUpperCase();
-    const who = [...document.querySelectorAll(".who:checked")].map((c) => c.value);
-    if (!description || !(amount > 0) || !who.length) { err.textContent = "Add a description, amount and at least one person."; return; }
-    if (!/^[A-Z]{3}$/.test(currency)) { err.textContent = "Currency must be a 3-letter code, e.g. SGD or MYR."; return; }
-    ev.target.disabled = true;
-    const { data: e, error } = await sb.from("expenses")
-      .insert({ group_id: id, description, amount, currency, paid_by: payer.value }).select().single();
-    if (error) { err.textContent = error.message; ev.target.disabled = false; return; }
-    const rows = equalSplit(amount, who).map((s) => ({ ...s, expense_id: e.id }));
-    const { error: e2 } = await sb.from("splits").insert(rows);
-    if (e2) { await sb.from("expenses").delete().eq("id", e.id); err.textContent = e2.message; ev.target.disabled = false; return; }
-    setLastCurrency(currency);
-    route();
-  };
+  if (!me) {
+    $("joinbtn").onclick = async (ev) => {
+      ev.target.disabled = true;
+      const v = $("claim").value;
+      let error;
+      if (v === "__new") {
+        ({ error } = await sb.from("members").insert({ group_id: id, name: user.username, user_id: user.id }));
+      } else {
+        const r = await sb.from("members").update({ user_id: user.id }).eq("id", v).is("user_id", null).select();
+        error = r.error;
+        if (!error && !(r.data && r.data.length)) error = { message: "Someone already claimed that name." };
+      }
+      if (error) { $("err").textContent = error.message; ev.target.disabled = false; if (v !== "__new") route(); return; }
+      route();
+    };
+  } else {
+    wireForm(ctx, me, editing);
+  }
+
+  document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => {
+    editingId = b.dataset.edit; drawGroup(ctx);
+    const f = $("expform"); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: "smooth", block: "center" });
+  }));
 
   document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
     if (!confirm("Delete this expense?")) return;
@@ -226,11 +349,80 @@ async function renderGroup(id) {
     if (error) return fail(error); route();
   }));
 
-  document.getElementById("addm").onclick = async () => {
-    const n = newm.value.trim(); if (!n) return;
+  if (me) $("addm").onclick = async () => {
+    const n = $("newm").value.trim(); if (!n) return;
     const { error } = await sb.from("members").insert({ group_id: id, name: n });
     if (error) return fail(error); route();
   };
+}
+
+// The add / edit expense form
+function wireForm(ctx, me, editing) {
+  const { id, members } = ctx;
+  const rows = () => [...document.querySelectorAll(".srow")];
+
+  function updatePreview() {
+    rows().forEach((r) => (r.querySelector(".prev").textContent = ""));
+    const amount = parseFloat($("amt").value), cur = $("ccy").value.trim().toUpperCase();
+    const show = (memberId, share) => { const r = rows().find((x) => x.dataset.id === memberId); if (r) r.querySelector(".prev").textContent = `${cur} ${share.toFixed(2)}`; };
+    if (splitMode === "percent") {
+      const entries = rows().map((r) => ({ id: r.dataset.id, percent: parseFloat(r.querySelector(".pct").value) || 0 }));
+      const tot = entries.reduce((t, e) => t + Math.round(e.percent * 1000), 0) / 1000;
+      const el = $("pcttotal");
+      el.textContent = `Total ${tot}%` + (tot === 100 ? "" : " (must be 100%)");
+      el.className = tot === 100 ? "muted" : "err";
+      if (tot === 100 && amount > 0) percentSplit(amount, entries).forEach((s) => show(s.member_id, s.share));
+    } else if (amount > 0) {
+      const ids = rows().filter((r) => r.querySelector(".who").checked).map((r) => r.dataset.id);
+      if (ids.length) equalSplit(amount, ids).forEach((s) => show(s.member_id, s.share));
+    }
+  }
+
+  document.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => {
+    const next = b.dataset.mode;
+    if (next === splitMode) return;
+    if (next === "percent") {   // start from an even split between whoever is ticked
+      const ids = rows().filter((r) => r.querySelector(".who").checked).map((r) => r.dataset.id);
+      const even = Object.fromEntries(equalPercents(ids).map((e) => [e.id, e.percent]));
+      rows().forEach((r) => (r.querySelector(".pct").value = even[r.dataset.id] ?? 0));
+    }
+    splitMode = next;
+    $("splitbox").classList.toggle("mode-percent", next === "percent");
+    document.querySelectorAll("[data-mode]").forEach((x) => x.classList.toggle("on", x.dataset.mode === next));
+    updatePreview();
+  }));
+  ["amt", "ccy"].forEach((k) => ($(k).oninput = updatePreview));
+  rows().forEach((r) => { r.querySelector(".who").onchange = updatePreview; r.querySelector(".pct").oninput = updatePreview; });
+
+  if (editing) $("cancel").onclick = () => { editingId = null; drawGroup(ctx); };
+
+  $("save").onclick = async (ev) => {
+    const err = $("err");
+    const description = $("desc").value.trim(), amount = parseFloat($("amt").value);
+    const currency = $("ccy").value.trim().toUpperCase();
+    if (!description) { err.textContent = "What was it for?"; return; }
+    if (!(amount > 0)) { err.textContent = "Enter an amount more than 0."; return; }
+    if (!/^[A-Z]{3}$/.test(currency)) { err.textContent = "Currency must be a 3-letter code, e.g. SGD or MYR."; return; }
+    let split;
+    try {
+      if (splitMode === "equal") {
+        const ids = rows().filter((r) => r.querySelector(".who").checked).map((r) => r.dataset.id);
+        if (!ids.length) throw new Error("Pick at least one person to split with.");
+        split = equalSplit(amount, ids);
+      } else {
+        split = percentSplit(amount, rows().map((r) => ({ id: r.dataset.id, percent: parseFloat(r.querySelector(".pct").value) || 0 })));
+      }
+    } catch (e) { err.textContent = e.message; return; }
+    ev.target.disabled = true;
+    const { error } = await sb.rpc("save_expense", {
+      p_id: editing ? editing.id : null, p_group: id, p_description: description, p_amount: amount,
+      p_currency: currency, p_paid_by: $("payer").value, p_added_by: me.id, p_split_type: splitMode, p_splits: split });
+    if (error) { err.textContent = friendly(error.message); ev.target.disabled = false; return; }
+    setLastCurrency(currency);
+    route();
+  };
+
+  updatePreview();
 }
 
 window.addEventListener("hashchange", route);
