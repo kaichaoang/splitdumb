@@ -3,49 +3,122 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#5b5bd6">
 <title>SplitDumb</title>
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --ink:#1c2430; --muted:#6b7686; --accent:#1fa971; --red:#d64545; --line:#e4e8ee; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#12161c; --card:#1b2129; --ink:#e8edf3; --muted:#8c98a8; --line:#2a323d; }
+  :root {
+    --bg:#f3f4fb; --surface:#ffffff; --ink:#1b1d3a; --muted:#6a6f8f; --line:#e6e8f4;
+    --primary:#5b5bd6; --primary-ink:#ffffff; --primary-soft:#ecebff;
+    --good:#0f9f6e; --good-soft:#def7ec; --bad:#e5484d; --bad-soft:#ffe8ea; --warn:#a96a00; --warn-soft:#fff1d1;
+    --g1:#5b5bd6; --g2:#8a5cf0; --shadow:0 1px 2px rgba(30,30,80,.05), 0 8px 22px rgba(30,30,80,.06);
   }
-  * { box-sizing: border-box; }
-  body { margin:0; font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
-  main { max-width:640px; margin:0 auto; padding:16px; }
-  h1 { font-size:22px; margin:8px 0 16px; } h1 a { color:inherit; text-decoration:none; }
-  h2 { font-size:15px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:24px 0 8px; }
-  a { color:var(--accent); }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:8px; }
-  .row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0f1022; --surface:#1a1c36; --ink:#eceefc; --muted:#9a9fc4; --line:#2b2e52;
+      --primary:#8484ff; --primary-ink:#10113a; --primary-soft:#26285c;
+      --good:#3dd6a1; --good-soft:#12362c; --bad:#ff7d82; --bad-soft:#3c1d26; --warn:#f6c453; --warn-soft:#3b3115;
+      --g1:#3f3fa8; --g2:#6a45c8; --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.25);
+    }
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  a { color:var(--primary); }
+
+  /* ---- shell: top bar, side menu, content */
+  #bar { position:sticky; top:0; z-index:20; height:56px; display:flex; align-items:center; gap:10px; padding:0 14px;
+         background:linear-gradient(135deg,var(--g1),var(--g2)); color:#fff; box-shadow:0 2px 10px rgba(40,30,120,.25); }
+  #bar .logo { color:#fff; text-decoration:none; font-weight:800; font-size:20px; letter-spacing:-.02em; margin-right:auto; }
+  #bar .logo span { opacity:.8; font-weight:600; }
+  #burger { width:auto; margin:0; padding:6px 11px; font-size:19px; line-height:1; background:rgba(255,255,255,.18); color:#fff; border:0; border-radius:10px; cursor:pointer; }
+  #bar .me { text-decoration:none; }
+  #side { position:fixed; top:56px; bottom:0; left:0; width:290px; max-width:86vw; z-index:15; padding:14px 12px 20px;
+          background:var(--surface); border-right:1px solid var(--line); overflow-y:auto; transform:translateX(-102%); transition:transform .2s ease;
+          display:flex; flex-direction:column; gap:2px; }
+  #scrim { display:none; position:fixed; inset:56px 0 0 0; background:rgba(8,8,30,.5); z-index:12; }
+  body.menu-open #side { transform:none; box-shadow:0 0 40px rgba(0,0,0,.25); }
+  body.menu-open #scrim { display:block; }
+  #main { max-width:700px; margin:0 auto; padding:18px 16px 60px; }
+  body:not(.authed) #side, body:not(.authed) #burger, body:not(.authed) #scrim, body:not(.authed) #bar .me { display:none !important; }
+  @media (min-width:900px) {
+    #side { transform:none; box-shadow:none; }
+    #burger { display:none; } #scrim { display:none !important; }
+    body.authed #main { margin-left:290px; max-width:none; padding:24px 32px 60px; }
+    body.authed #main > #app { max-width:700px; }
+  }
+
+  /* ---- side menu */
+  .who { display:flex; align-items:center; gap:10px; padding:6px 8px 14px; border-bottom:1px solid var(--line); margin-bottom:8px; }
+  .who b { display:block; line-height:1.2; } .who small { color:var(--muted); }
+  .navhead { font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); padding:14px 10px 6px; }
+  .nav { display:flex; align-items:center; gap:8px; justify-content:space-between; padding:10px 10px; border-radius:12px; color:var(--ink); text-decoration:none; font-weight:500; }
+  .nav:hover { background:var(--bg); }
+  .nav.active { background:var(--primary-soft); color:var(--primary); font-weight:700; }
+  .nav .tname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .nav.add { color:var(--primary); font-weight:700; }
+  .sidefoot { margin-top:auto; padding-top:14px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:6px; }
+
+  /* ---- type & surfaces */
+  h2 { font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:28px 0 10px; }
+  h2.page { font-size:26px; text-transform:none; letter-spacing:-.02em; color:var(--ink); margin:6px 0; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:13px 15px; margin-bottom:10px; box-shadow:var(--shadow); }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .person { display:flex; align-items:center; gap:10px; min-width:0; }
   .muted { color:var(--muted); font-size:14px; }
-  .cur { color:var(--muted); font-size:13px; font-weight:700; letter-spacing:.06em; margin:12px 0 4px; }
-  .pos { color:var(--accent); font-weight:600; } .neg { color:var(--red); font-weight:600; }
-  input, select, button { font:inherit; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); width:100%; margin:4px 0; }
-  button { background:var(--accent); color:#fff; border:0; cursor:pointer; font-weight:600; }
-  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); width:auto; padding:4px 10px; font-weight:400; margin:0; }
-  button:disabled { opacity:.5; }
-  label.chk { display:flex; align-items:center; gap:8px; padding:4px 0; } label.chk input { width:auto; margin:0; }
-  .err { color:var(--red); margin:8px 0; font-size:14px; }
+  .cur { color:var(--primary); font-size:12.5px; font-weight:800; letter-spacing:.08em; margin:16px 0 6px; }
+  .amt { font-weight:700; padding:3px 10px; border-radius:999px; font-size:14px; white-space:nowrap; }
+  .amt.pos { color:var(--good); background:var(--good-soft); } .amt.neg { color:var(--bad); background:var(--bad-soft); } .amt.zero { color:var(--muted); background:var(--bg); font-weight:500; }
+  .err { color:var(--bad); margin:8px 0; font-size:14px; } .ok { color:var(--good); margin:8px 0; font-size:14px; }
+  .back { display:inline-flex; align-items:center; gap:6px; text-decoration:none; font-weight:600; font-size:15px; padding:6px 12px 6px 8px; margin:0 0 4px -8px; border-radius:999px; }
+  .back:hover { background:var(--primary-soft); }
+  .hero { padding:18px; border-radius:20px; color:#fff; background:linear-gradient(135deg,var(--g1),var(--g2)); box-shadow:var(--shadow); margin-bottom:12px; }
+  .hero h1 { margin:0 0 4px; font-size:24px; letter-spacing:-.02em; } .hero p { margin:0; opacity:.9; }
+
+  /* ---- people, tags */
+  .av { width:34px; height:34px; border-radius:50%; flex:none; display:inline-grid; place-items:center; color:#fff; font-weight:700; font-size:14px; background:hsl(var(--h) 52% 46%); }
+  .av::before { content:attr(data-i); }
+  .av.sm { width:28px; height:28px; font-size:12px; }
+  .tag { font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap; flex:none; }
+  .tag.settled { color:var(--good); background:var(--good-soft); } .tag.settled::before { content:"✓ "; }
+  .tag.open { color:var(--warn); background:var(--warn-soft); }
+  .tag.new { color:var(--muted); background:var(--bg); border:1px solid var(--line); }
+
+  /* ---- forms */
+  input, select, button { font:inherit; padding:11px 13px; border-radius:12px; border:1px solid var(--line); background:var(--surface); color:var(--ink); width:100%; margin:4px 0; }
+  input:focus, select:focus { outline:2px solid var(--primary); outline-offset:1px; border-color:transparent; }
+  button { background:var(--primary); color:var(--primary-ink); border:0; cursor:pointer; font-weight:700; }
+  button:hover { filter:brightness(1.06); }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); width:auto; padding:5px 12px; font-weight:500; margin:0; font-size:14px; }
+  button.ghost:hover { color:var(--primary); border-color:var(--primary); filter:none; }
+  button.danger:hover { color:var(--bad); border-color:var(--bad); }
+  button:disabled { opacity:.5; cursor:default; }
+  label.chk { display:flex; align-items:center; gap:9px; padding:5px 0; } label.chk input { width:auto; margin:0; accent-color:var(--primary); }
   .grid2 { display:grid; grid-template-columns:2fr 1fr; gap:8px; }
+  .grid2b { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; } .grid2b button { width:auto; padding-left:18px; padding-right:18px; }
   .upper { text-transform:uppercase; }
-  .seg { display:flex; gap:6px; margin:6px 0; }
-  .segbtn { background:transparent; color:var(--muted); border:1px solid var(--line); flex:1; width:auto; font-weight:500; }
-  .segbtn.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .seg { display:flex; gap:6px; margin:6px 0; background:var(--bg); padding:4px; border-radius:14px; }
+  .segbtn { background:transparent; color:var(--muted); border:0; flex:1; width:auto; font-weight:600; margin:0; }
+  .segbtn.on { background:var(--surface); color:var(--primary); box-shadow:var(--shadow); }
   .srow { display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:8px; padding:2px 0; }
   .srow .pctwrap { display:none; align-items:center; gap:4px; }
-  .srow .pct { width:88px; margin:0; text-align:right; }
+  .srow .pct { width:90px; margin:0; text-align:right; }
   .prev { min-width:84px; text-align:right; font-variant-numeric:tabular-nums; }
-  #splitbox.mode-percent .pctwrap { display:flex; }
-  #splitbox.mode-percent .who { display:none; }
+  #splitbox.mode-percent .pctwrap { display:flex; } #splitbox.mode-percent .inc { display:none; }
   #splitbox:not(.mode-percent) #pcttotal { display:none; }
-  .btns { display:flex; gap:6px; }
+  .btns { display:flex; gap:6px; align-items:center; }
+  .exp { align-items:flex-start; }
+  .exp .title { font-weight:600; }
 </style>
 </head>
 <body>
-<main>
-  <div id="top"></div>
-  <div id="app">Loading…</div>
-</main>
+<header id="bar">
+  <button id="burger" aria-label="Open menu">☰</button>
+  <a class="logo" href="#/">Split<span>Dumb</span></a>
+  <span id="barright"></span>
+</header>
+<div id="scrim"></div>
+<aside id="side"></aside>
+<main id="main"><div id="app">Loading…</div></main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
@@ -59,35 +132,79 @@ const sb = configured ? supabase.createClient(window.SUPABASE_URL, window.SUPABA
 const CURRENCIES = ["SGD","MYR","USD","EUR","GBP","JPY","THB","IDR","AUD","CNY","HKD","KRW","VND","PHP","INR","TWD"];
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const money = (cents) => (cents / 100).toFixed(2);
+const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+const av = (name, cls = "") => `<span class="av ${cls}" style="--h:${hue(name)}" data-i="${esc((String(name).trim()[0] || "?").toUpperCase())}"></span>`;
+const TAGS = { new: "New", settled: "Settled", open: "Unsettled" };
+const tagHtml = (k) => `<span class="tag ${k}">${TAGS[k]}</span>`;
+const tripKind = (t) => (!t.expense_count ? "new" : t.settled ? "settled" : "open");
 const getLastCurrency = () => { try { return localStorage.getItem("lastCurrency") || DEFAULT_CURRENCY; } catch { return DEFAULT_CURRENCY; } };
 const setLastCurrency = (c) => { try { localStorage.setItem("lastCurrency", c); } catch {} };
-const friendly = (msg) => /could not find the function|schema cache/i.test(msg || "")
+const friendly = (msg) => /could not find the function|schema cache|permission denied for/i.test(msg || "")
   ? "The database hasn't been updated yet. Run the latest schema.sql in Supabase, then refresh." : (msg || "Something went wrong");
-const fail = (e) => { app.innerHTML = `<div class="err">${esc(friendly(e.message || e))}</div><a href="#/">Back</a>`; };
 
-// ------------------------------------------------------------------ session
-// Client-side only: remembers who you are on this device. See README for the security limits.
-let user = null;
-try { user = JSON.parse(localStorage.getItem("user") || "null"); } catch {}
-function setUser(u) {
-  user = u;
-  try { u ? localStorage.setItem("user", JSON.stringify(u)) : localStorage.removeItem("user"); } catch {}
+// ------------------------------------------------------------------ session + server calls
+// Every data call goes to a server function that checks this token, so you only ever get your own groups.
+let session = null;
+try { session = JSON.parse(localStorage.getItem("session") || "null"); } catch {}
+function setSession(s) {
+  session = s;
+  try { s ? localStorage.setItem("session", JSON.stringify(s)) : localStorage.removeItem("session"); } catch {}
 }
-function renderTop() {
-  $("top").innerHTML = `<div class="row"><h1><a href="#/">SplitDumb</a></h1>
-    ${user ? `<span class="muted">${esc(user.username)} <button class="ghost" id="logout">Log out</button></span>` : ""}</div>`;
-  const lo = $("logout");
-  if (lo) lo.onclick = () => {
-    setUser(null); authMode = "login";
-    if (location.hash === "#/") route(); else location.hash = "#/";   // hashchange re-renders
-  };
+async function call(fn, args = {}) {
+  const { data, error } = await sb.rpc(fn, { p_token: session && session.token, ...args });
+  if (error) {
+    const e = new Error(error.message);
+    if (/Session expired/i.test(error.message)) { setSession(null); e.expired = true; }
+    throw e;
+  }
+  return data;
 }
+async function callPublic(fn, args) {
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) throw new Error(error.message);
+  return data;
+}
+const showErr = (el, e) => { el.textContent = friendly(e.message); el.className = "err"; if (e.expired) route(); };
+
+// ------------------------------------------------------------------ shell: top bar + side menu
+let trips = [];
+function renderShell() {
+  document.body.classList.toggle("authed", !!session);
+  $("barright").innerHTML = session
+    ? `<a class="me" href="#/account" title="Account">${av(session.display_name || session.username, "sm")}</a>` : "";
+  if (!session) { $("side").innerHTML = ""; return; }
+  const activeId = (location.hash.match(/^#\/g\/([0-9a-f-]{36})$/i) || [])[1];
+  const here = location.hash;
+  $("side").innerHTML = `
+    <div class="who">${av(session.display_name || session.username)}
+      <div><b>${esc(session.display_name || session.username)}</b><small>@${esc(session.username)}</small></div></div>
+    <a class="nav ${here === "" || here === "#/" ? "active" : ""}" href="#/">All trips</a>
+    <div class="navhead">Your trips</div>
+    ${trips.length ? trips.map((t) => `<a class="nav ${t.id === activeId ? "active" : ""}" href="#/g/${t.id}">
+        <span class="tname">${esc(t.name)}</span>${tagHtml(tripKind(t))}</a>`).join("")
+      : `<div class="muted" style="padding:4px 10px">No trips yet</div>`}
+    <a class="nav add ${here === "#/new" ? "active" : ""}" href="#/new">＋ New trip</a>
+    <div class="sidefoot">
+      <a class="nav ${here === "#/account" ? "active" : ""}" href="#/account">Account &amp; password</a>
+      <button class="ghost" id="logout">Log out</button>
+    </div>`;
+  $("logout").onclick = logout;
+}
+async function logout() {
+  try { await call("logout"); } catch {}
+  setSession(null); authMode = "login";
+  if (location.hash === "#/" || location.hash === "") route(); else location.hash = "#/";
+}
+$("burger").onclick = () => document.body.classList.toggle("menu-open");
+$("scrim").onclick = () => document.body.classList.remove("menu-open");
 
 // ------------------------------------------------------------------ login / sign up
 let authMode = "login";
-function renderAuth() {
+function renderAuth(notice) {
   const signup = authMode === "signup";
-  app.innerHTML = `<div class="card">
+  app.innerHTML = `
+    <div class="hero"><h1>SplitDumb</h1><p>Split expenses with friends. Log in to see your trips.</p></div>
+    <div class="card">
     <div class="seg">
       <button type="button" class="segbtn ${signup ? "" : "on"}" data-m="login">Log in</button>
       <button type="button" class="segbtn ${signup ? "on" : ""}" data-m="signup">Create account</button>
@@ -96,8 +213,8 @@ function renderAuth() {
     <input id="p" type="password" placeholder="Password" autocomplete="${signup ? "new-password" : "current-password"}">
     ${signup ? `<input id="p2" type="password" placeholder="Confirm password" autocomplete="new-password">` : ""}
     <button id="go">${signup ? "Create account" : "Log in"}</button>
-    <div id="err" class="err"></div>
-    ${signup ? `<div class="muted">Username: 2-20 letters, numbers, . _ - &nbsp;·&nbsp; Password: at least 6 characters.</div>` : ""}
+    <div id="err" class="err">${notice ? esc(notice) : ""}</div>
+    ${signup ? `<div class="muted">Username: 2-20 letters, numbers, . _ - &nbsp;·&nbsp; Password: at least 6 characters.<br>You'll only see trips that someone adds you to.</div>` : ""}
   </div>`;
   document.querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => { authMode = b.dataset.m; renderAuth(); }));
   const go = async () => {
@@ -105,10 +222,12 @@ function renderAuth() {
     if (!username || !password) { $("err").textContent = "Enter a username and password."; return; }
     if (signup && password !== $("p2").value) { $("err").textContent = "Passwords don't match."; return; }
     $("go").disabled = true;
-    const { data, error } = await sb.rpc(signup ? "register_user" : "login_user", { p_username: username, p_password: password });
-    if (error) { $("err").textContent = friendly(error.message); $("go").disabled = false; return; }
-    setUser({ id: data.id, username: data.username });
-    route();
+    try {
+      const d = await callPublic(signup ? "register_user" : "login_user", { p_username: username, p_password: password });
+      if (d.error) throw new Error(d.error);
+      setSession({ token: d.token, id: d.id, username: d.username, display_name: d.display_name });
+      route();
+    } catch (e) { $("err").textContent = friendly(e.message); $("go").disabled = false; }
   };
   $("go").onclick = go;
   ["u", "p", "p2"].forEach((id) => { const el = $(id); if (el) el.onkeydown = (e) => { if (e.key === "Enter") go(); }; });
@@ -116,99 +235,134 @@ function renderAuth() {
 
 // ------------------------------------------------------------------ routing
 async function route() {
-  renderTop();
-  if (!configured) {
-    app.innerHTML = `<div class="card">Set your Supabase URL and key in <code>config.js</code> first.</div>`;
-    return;
+  document.body.classList.remove("menu-open");
+  if (!configured) { renderShell(); app.innerHTML = `<div class="card">Set your Supabase URL and key in <code>config.js</code> first.</div>`; return; }
+  if (!session) { renderShell(); return renderAuth(); }
+  try {
+    trips = await call("my_groups");       // also proves the session is still valid
+    renderShell();
+    const h = location.hash, g = h.match(/^#\/g\/([0-9a-f-]{36})$/i);
+    if (g) await renderGroup(g[1]);
+    else if (h === "#/new") renderNew();
+    else if (h === "#/account") renderAccount();
+    else renderHome();
+  } catch (e) {
+    renderShell();
+    if (e.expired) return renderAuth("Your session expired. Please log in again.");
+    app.innerHTML = `<div class="err">${esc(friendly(e.message))}</div><a class="back" href="#/">← All trips</a>`;
   }
-  if (!user) return renderAuth();
-  const m = location.hash.match(/^#\/g\/([0-9a-f-]{36})$/i);
-  try { m ? await renderGroup(m[1]) : await renderHome(); } catch (e) { fail(e); }
 }
 
-// ------------------------------------------------------------------ home
-async function renderHome() {
-  const { data, error } = await sb.from("members").select("group_id, groups(id, name)").eq("user_id", user.id);
-  if (error) throw error;
-  const seen = new Set(), groups = [];
-  (data || []).forEach((r) => { const g = r.groups; if (g && !seen.has(g.id)) { seen.add(g.id); groups.push(g); } });
-  groups.sort((a, b) => a.name.localeCompare(b.name));
-
+// ------------------------------------------------------------------ home, new trip, account
+function renderHome() {
   app.innerHTML = `
-    <h2>Your groups</h2>
-    ${groups.length ? groups.map((g) => `<a class="card row" href="#/g/${g.id}" style="text-decoration:none;color:inherit">
-        <span>${esc(g.name)}</span><span class="muted">open →</span></a>`).join("")
-      : `<div class="muted">No groups yet. Create one below, or join with a link.</div>`}
-    <h2>New group</h2>
-    <div class="card">
-      <input id="gname" placeholder="Group name (e.g. Bali trip)">
-      <input id="gmembers" placeholder="Other people, comma separated (e.g. Ana, Ben)">
-      <div class="muted">You (${esc(user.username)}) are added automatically.</div>
-      <button id="create">Create group</button>
-      <div id="err" class="err"></div>
-    </div>
-    <h2>Join with a link</h2>
-    <div class="card">
-      <input id="code" placeholder="Paste group link or code">
-      <button id="join">Open</button>
-      <div id="jerr" class="err"></div>
-    </div>`;
+    <h2 class="page">Your trips</h2>
+    ${trips.length ? trips.map((t) => `<a class="card row" href="#/g/${t.id}" style="text-decoration:none;color:inherit">
+        <div class="person">${av(t.name)}<div><b>${esc(t.name)}</b><div class="muted">${t.expense_count} expense${t.expense_count === 1 ? "" : "s"}</div></div></div>
+        ${tagHtml(tripKind(t))}</a>`).join("")
+      : `<div class="card"><b>No trips yet.</b><div class="muted">Create one, or ask a friend to add you to theirs using your username <b>@${esc(session.username)}</b>.</div></div>`}
+    <div style="margin-top:14px"><a href="#/new"><button type="button">＋ New trip</button></a></div>`;
+}
 
+function renderNew() {
+  app.innerHTML = `
+    <a class="back" href="#/">← All trips</a>
+    <h2 class="page">New trip</h2>
+    <div class="card">
+      <input id="gname" placeholder="Trip name (e.g. Bali trip)">
+      <input id="gmembers" placeholder="Names of people without an account (optional, comma separated)">
+      <div class="muted">You are added automatically. After creating, add friends who have accounts by their username.</div>
+      <button id="create" style="margin-top:10px">Create trip</button>
+      <div id="err" class="err"></div>
+    </div>`;
   $("create").onclick = async (ev) => {
     const name = $("gname").value.trim();
-    const seenNames = new Set([user.username.toLowerCase()]);
-    const others = $("gmembers").value.split(",").map((s) => s.trim()).filter((n) => {
-      if (!n || seenNames.has(n.toLowerCase())) return false; seenNames.add(n.toLowerCase()); return true; });
-    if (!name || others.length < 1) { $("err").textContent = "Need a group name and at least one other person."; return; }
+    if (!name) { $("err").textContent = "Give the trip a name."; return; }
     ev.target.disabled = true;
-    const { data: g, error: e1 } = await sb.from("groups").insert({ name }).select().single();
-    if (e1) { $("err").textContent = e1.message; ev.target.disabled = false; return; }
-    const rows = [{ group_id: g.id, name: user.username, user_id: user.id }, ...others.map((n) => ({ group_id: g.id, name: n }))];
-    const { error: e2 } = await sb.from("members").insert(rows);
-    if (e2) { $("err").textContent = e2.message; ev.target.disabled = false; return; }
-    location.hash = `#/g/${g.id}`;
-  };
-  $("join").onclick = () => {
-    const id = ($("code").value.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
-    if (id) location.hash = `#/g/${id}`; else $("jerr").textContent = "That doesn't look like a group link.";
+    try {
+      const r = await call("create_group", { p_name: name, p_others: $("gmembers").value.split(",").map((s) => s.trim()).filter(Boolean) });
+      location.hash = `#/g/${r.id}`;
+    } catch (e) { showErr($("err"), e); ev.target.disabled = false; }
   };
 }
 
-// ------------------------------------------------------------------ group
+function renderAccount() {
+  app.innerHTML = `
+    <a class="back" href="#/">← All trips</a>
+    <h2 class="page">Account</h2>
+    <div class="card">
+      <div class="person">${av(session.display_name || session.username)}<div><b>@${esc(session.username)}</b>
+        <div class="muted">Your username. Friends use it to add you to trips, and it can't be changed.</div></div></div>
+    </div>
+    <h2>Display name</h2>
+    <div class="card">
+      <div class="muted">Shown to everyone in your trips.</div>
+      <input id="dn" maxlength="30" value="${esc(session.display_name || session.username)}">
+      <button id="dnsave">Save name</button>
+      <div id="dnmsg"></div>
+    </div>
+    <h2>Change password</h2>
+    <div class="card">
+      <input id="op" type="password" placeholder="Current password" autocomplete="current-password">
+      <input id="np" type="password" placeholder="New password (6+ characters)" autocomplete="new-password">
+      <input id="np2" type="password" placeholder="Confirm new password" autocomplete="new-password">
+      <button id="pwsave">Change password</button>
+      <div id="pwmsg"></div>
+    </div>`;
+  $("dnsave").onclick = async (ev) => {
+    ev.target.disabled = true;
+    try {
+      const u = await call("set_display_name", { p_name: $("dn").value });
+      setSession({ ...session, display_name: u.display_name });
+      renderShell();
+      $("dnmsg").textContent = "Saved. Your new name now shows in all your trips."; $("dnmsg").className = "ok";
+    } catch (e) { showErr($("dnmsg"), e); }
+    ev.target.disabled = false;
+  };
+  $("pwsave").onclick = async (ev) => {
+    if ($("np").value !== $("np2").value) { $("pwmsg").textContent = "New passwords don't match."; $("pwmsg").className = "err"; return; }
+    ev.target.disabled = true;
+    try {
+      await call("change_password", { p_old: $("op").value, p_new: $("np").value });
+      $("op").value = $("np").value = $("np2").value = "";
+      $("pwmsg").textContent = "Password changed. You've been signed out on your other devices."; $("pwmsg").className = "ok";
+    } catch (e) { showErr($("pwmsg"), e); }
+    ev.target.disabled = false;
+  };
+}
+
+// ------------------------------------------------------------------ a trip
 let editingId = null;   // expense being edited, if any
 let splitMode = "equal";
 
-async function loadGroup(id) {
-  const [g, mem, exp, pay] = await Promise.all([
-    sb.from("groups").select("*").eq("id", id).maybeSingle(),
-    sb.from("members").select("*").eq("group_id", id).order("name"),
-    sb.from("expenses").select("*").eq("group_id", id).order("created_at", { ascending: false }),
-    sb.from("payments").select("*").eq("group_id", id).order("created_at", { ascending: false }),
-  ]);
-  for (const r of [g, mem, exp, pay]) if (r.error) throw r.error;
-  if (!g.data) throw new Error("Group not found.");
-  const expIds = exp.data.map((e) => e.id);
-  const spl = expIds.length ? await sb.from("splits").select("*").in("expense_id", expIds) : { data: [] };
-  if (spl.error) throw spl.error;
-  return { id, group: g.data, members: mem.data, expenses: exp.data, payments: pay.data, splits: spl.data };
-}
-
 async function renderGroup(id) {
   editingId = null;
-  drawGroup(await loadGroup(id));
+  let d;
+  try { d = await call("get_group", { p_group: id }); }
+  catch (e) {
+    if (/not a member/i.test(e.message)) {
+      app.innerHTML = `<a class="back" href="#/">← All trips</a>
+        <div class="card"><b>You're not in this trip.</b>
+        <div class="muted">Ask someone in the trip to add you, using your username: <b>@${esc(session.username)}</b>.<br>Having the link isn't enough.</div></div>`;
+      return;
+    }
+    throw e;
+  }
+  drawGroup({ id, group: d.group, meId: d.me, members: d.members, expenses: d.expenses, payments: d.payments, splits: d.splits });
 }
 
 function drawGroup(ctx) {
-  const { id, group, members, expenses, payments, splits } = ctx;
-  const me = members.find((m) => m.user_id === user.id) || null;
+  const { id, group, meId, members, expenses, payments, splits } = ctx;
+  const me = members.find((m) => m.id === meId);
   const name = Object.fromEntries(members.map((m) => [m.id, m.name]));
-  const youTag = (m) => (me && m.id === me.id ? " (you)" : "");
+  const youTag = (m) => (m.id === meId ? " (you)" : "");
 
   // balances & spending are kept per currency; currencies are never converted or mixed
   const byCur = balancesByCurrency(members, expenses, splits, payments);
   const curs = Object.keys(byCur);
   const debts = curs.flatMap((c) => simplifyDebts(byCur[c]).map((d) => ({ ...d, currency: c })));
   const spend = spendingByCurrency(members, expenses, splits);
+  const kind = !expenses.length ? "new" : debts.length ? "open" : "settled";
 
   // form defaults (new expense, or the one being edited)
   const editing = editingId ? expenses.find((e) => e.id === editingId) || null : null;
@@ -220,44 +374,34 @@ function drawGroup(ctx) {
   if (editing && editing.split_type === "percent") editSplits.forEach((s) => (pct[s.member_id] = Number(s.percent)));
   else equalPercents([...checked]).forEach((e) => (pct[e.id] = e.percent));
 
-  const unclaimed = members.filter((m) => !m.user_id);
-
   app.innerHTML = `
-    <div class="row"><h2 style="margin:0">${esc(group.name)}</h2>
-      <button class="ghost" id="copy">Copy invite link</button></div>
-
-    ${me ? "" : `<h2>Join this group</h2>
-    <div class="card">
-      <div class="muted">Which one are you?</div>
-      <select id="claim">
-        ${unclaimed.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join("")}
-        <option value="__new">I'm new here: add me as ${esc(user.username)}</option>
-      </select>
-      <button id="joinbtn">Join</button>
-      <div id="err" class="err"></div>
-    </div>`}
+    <a class="back" href="#/">← All trips</a>
+    <div class="row" style="margin-bottom:2px">
+      <div class="person"><h2 class="page">${esc(group.name)}</h2>${tagHtml(kind)}</div>
+      <button class="ghost" id="copy">Copy link</button></div>
+    <div class="muted">${members.length} people · you are ${esc(me.name)}</div>
 
     <h2>Balances</h2>
     ${curs.length ? curs.map((c) => `<div class="cur">${esc(c)}</div>` + members.map((m) => { const b = byCur[c][m.id];
-      return `<div class="card row"><span>${esc(m.name)}${youTag(m)}</span>
-        <span class="${b > 0 ? "pos" : b < 0 ? "neg" : "muted"}">${b > 0 ? "gets back " + esc(c) + " " + money(b) : b < 0 ? "owes " + esc(c) + " " + money(-b) : "settled"}</span></div>`; }).join("")).join("")
+      return `<div class="card row"><div class="person">${av(m.name)}<span>${esc(m.name)}${youTag(m)}</span></div>
+        <span class="amt ${b > 0 ? "pos" : b < 0 ? "neg" : "zero"}">${b > 0 ? "gets back " + esc(c) + " " + money(b) : b < 0 ? "owes " + esc(c) + " " + money(-b) : "settled"}</span></div>`; }).join("")).join("")
       : `<div class="muted">No expenses yet.</div>`}
 
     <h2>Settle up</h2>
     ${debts.length ? debts.map((d, i) => `<div class="card row">
         <span>${esc(name[d.from])} pays ${esc(name[d.to])} <b>${esc(d.currency)} ${money(d.cents)}</b></span>
-        ${me ? `<button class="ghost" data-settle="${i}">Mark paid</button>` : ""}</div>`).join("")
-      : `<div class="muted">Everyone is settled up.</div>`}
+        <button class="ghost" data-settle="${i}">Mark paid</button></div>`).join("")
+      : `<div class="muted">${expenses.length ? "Everyone is settled up." : "Nothing to settle yet."}</div>`}
 
     <h2>Spending</h2>
     ${curs.length ? Object.entries(spend).map(([c, s]) => `<div class="cur">${esc(c)} · group total ${money(s.total)}</div>` +
       members.map((m) => { const r = s.byMember[m.id];
-        return `<div class="card row"><span>${esc(m.name)}${youTag(m)}</span>
+        return `<div class="card row"><div class="person">${av(m.name)}<span>${esc(m.name)}${youTag(m)}</span></div>
           <span><b>${esc(c)} ${money(r.spent)}</b> <span class="muted">spent · paid ${money(r.paid)}</span></span></div>`; }).join("")).join("")
       + `<div class="muted">Spent = each person's share of the expenses. Paid = what they put up front.</div>`
       : `<div class="muted">No expenses yet.</div>`}
 
-    ${me ? `<h2>${editing ? "Edit expense" : "Add expense"}</h2>
+    <h2>${editing ? "Edit expense" : "Add expense"}</h2>
     <div class="card" id="expform">
       <input id="desc" placeholder="What was it for?" value="${editing ? esc(editing.description) : ""}">
       <div class="grid2">
@@ -266,7 +410,7 @@ function drawGroup(ctx) {
         <datalist id="ccylist">${CURRENCIES.map((c) => `<option value="${c}">`).join("")}</datalist>
       </div>
       <div class="muted" style="margin-top:6px">Paid by</div>
-      <select id="payer">${members.map((m) => `<option value="${m.id}" ${m.id === (editing ? editing.paid_by : me.id) ? "selected" : ""}>${esc(m.name)}${youTag(m)}</option>`).join("")}</select>
+      <select id="payer">${members.map((m) => `<option value="${m.id}" ${m.id === (editing ? editing.paid_by : meId) ? "selected" : ""}>${esc(m.name)}${youTag(m)}</option>`).join("")}</select>
       <div class="muted" style="margin-top:6px">Split</div>
       <div class="seg">
         <button type="button" class="segbtn ${splitMode === "equal" ? "on" : ""}" data-mode="equal">Equally</button>
@@ -274,35 +418,41 @@ function drawGroup(ctx) {
       </div>
       <div id="splitbox" class="${splitMode === "percent" ? "mode-percent" : ""}">
         ${members.map((m) => `<div class="srow" data-id="${m.id}">
-          <label class="chk"><input type="checkbox" class="who" value="${m.id}" ${checked.has(m.id) ? "checked" : ""}><span>${esc(m.name)}${youTag(m)}</span></label>
+          <label class="chk"><input type="checkbox" class="inc" value="${m.id}" ${checked.has(m.id) ? "checked" : ""}><span class="person">${av(m.name, "sm")}${esc(m.name)}${youTag(m)}</span></label>
           <span class="pctwrap"><input class="pct" type="number" step="0.001" min="0" max="100" inputmode="decimal" value="${pct[m.id] ?? 0}"><span class="muted">%</span></span>
           <span class="prev muted"></span></div>`).join("")}
         <div id="pcttotal" class="muted"></div>
       </div>
-      <div class="btns" style="margin-top:6px">
+      <div class="btns" style="margin-top:8px">
         <button id="save">${editing ? "Save changes" : "Add expense"}</button>
-        ${editing ? `<button id="cancel" class="segbtn" type="button">Cancel</button>` : ""}
+        ${editing ? `<button id="cancel" class="ghost" type="button">Cancel</button>` : ""}
       </div>
       <div id="err" class="err"></div>
-    </div>` : ""}
+    </div>
 
     <h2>Expenses</h2>
     ${expenses.length ? expenses.map((e) => {
       const sp = splits.filter((s) => s.expense_id === e.id);
-      const mine = me ? sp.find((s) => s.member_id === me.id) : null;
-      const line2 = (me ? (mine ? `Your share: ${esc(curOf(e))} ${Number(mine.share).toFixed(2)}` : "You're not in this split") : "")
-        + (e.split_type === "percent" ? (me ? " · " : "") + sp.map((s) => `${esc(name[s.member_id] || "?")} ${Number(s.percent)}%`).join(", ") : "");
-      return `<div class="card row">
-        <div><div>${esc(e.description)}</div>
+      const mine = sp.find((s) => s.member_id === meId);
+      const line2 = (mine ? `Your share: ${esc(curOf(e))} ${Number(mine.share).toFixed(2)}` : "You're not in this split")
+        + (e.split_type === "percent" ? " · " + sp.map((s) => `${esc(name[s.member_id] || "?")} ${Number(s.percent)}%`).join(", ") : "");
+      return `<div class="card row exp">
+        <div><div class="title">${esc(e.description)}</div>
           <div class="muted">${esc(name[e.paid_by] || "?")} paid ${esc(curOf(e))} ${Number(e.amount).toFixed(2)} · ${new Date(e.created_at).toLocaleDateString()}${e.added_by && name[e.added_by] ? ` · added by ${esc(name[e.added_by])}` : ""}</div>
-          ${line2 ? `<div class="muted">${line2}</div>` : ""}</div>
-        ${me ? `<div class="btns"><button class="ghost" data-edit="${e.id}">Edit</button><button class="ghost" data-del="${e.id}">Delete</button></div>` : ""}</div>`; }).join("")
+          <div class="muted">${line2}</div></div>
+        <div class="btns"><button class="ghost" data-edit="${e.id}">Edit</button><button class="ghost danger" data-del="${e.id}">Delete</button></div></div>`; }).join("")
       : `<div class="muted">No expenses yet.</div>`}
 
-    <h2>Members</h2>
+    <h2>People</h2>
+    ${members.map((m) => `<div class="card row"><div class="person">${av(m.name)}<div>${esc(m.name)}${youTag(m)}
+        <div class="muted">${m.linked ? "@" + esc(m.username) : "no account"}</div></div></div>
+        ${m.linked ? "" : `<button class="ghost" data-link="${m.id}">Link account</button>`}</div>`).join("")}
     <div class="card">
-      <div class="muted">${members.map((m) => esc(m.name) + youTag(m) + (m.user_id ? "" : " (no account yet)")).join(" · ")}</div>
-      ${me ? `<input id="newm" placeholder="Add someone by name"><button id="addm">Add</button>` : ""}
+      <div class="muted">Add a friend who has an account</div>
+      <div class="grid2b"><input id="newu" placeholder="their username" autocapitalize="none" autocorrect="off" spellcheck="false"><button id="addu">Add</button></div>
+      <div class="muted" style="margin-top:8px">Or add someone by name only (no account)</div>
+      <div class="grid2b"><input id="newm" placeholder="Name"><button id="addm">Add</button></div>
+      <div id="perr" class="err"></div>
     </div>`;
 
   // ---- wiring
@@ -311,54 +461,41 @@ function drawGroup(ctx) {
     try { await navigator.clipboard.writeText(url); ev.target.textContent = "Copied!"; }
     catch { prompt("Copy this link:", url); }
   };
-
-  if (!me) {
-    $("joinbtn").onclick = async (ev) => {
-      ev.target.disabled = true;
-      const v = $("claim").value;
-      let error;
-      if (v === "__new") {
-        ({ error } = await sb.from("members").insert({ group_id: id, name: user.username, user_id: user.id }));
-      } else {
-        const r = await sb.from("members").update({ user_id: user.id }).eq("id", v).is("user_id", null).select();
-        error = r.error;
-        if (!error && !(r.data && r.data.length)) error = { message: "Someone already claimed that name." };
-      }
-      if (error) { $("err").textContent = error.message; ev.target.disabled = false; if (v !== "__new") route(); return; }
-      route();
-    };
-  } else {
-    wireForm(ctx, me, editing);
-  }
+  wireForm(ctx, me, editing);
 
   document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => {
     editingId = b.dataset.edit; drawGroup(ctx);
     const f = $("expform"); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: "smooth", block: "center" });
   }));
-
   document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
     if (!confirm("Delete this expense?")) return;
-    const { error } = await sb.from("expenses").delete().eq("id", b.dataset.del);
-    if (error) return fail(error); route();
+    try { await call("delete_expense", { p_expense: b.dataset.del }); route(); } catch (e) { showErr($("perr"), e); }
   }));
-
   document.querySelectorAll("[data-settle]").forEach((b) => (b.onclick = async () => {
     const d = debts[+b.dataset.settle];
-    const { error } = await sb.from("payments").insert({
-      group_id: id, from_member: d.from, to_member: d.to, amount: d.cents / 100, currency: d.currency });
-    if (error) return fail(error); route();
+    b.disabled = true;
+    try { await call("add_payment", { p_group: id, p_from: d.from, p_to: d.to, p_amount: d.cents / 100, p_currency: d.currency }); route(); }
+    catch (e) { showErr($("perr"), e); b.disabled = false; }
   }));
-
-  if (me) $("addm").onclick = async () => {
+  document.querySelectorAll("[data-link]").forEach((b) => (b.onclick = async () => {
+    const who = name[b.dataset.link];
+    const u = prompt(`Username of the account for ${who}?`);
+    if (!u || !u.trim()) return;
+    try { await call("link_member", { p_member: b.dataset.link, p_username: u.trim() }); route(); } catch (e) { showErr($("perr"), e); }
+  }));
+  $("addu").onclick = async () => {
+    const u = $("newu").value.trim(); if (!u) return;
+    try { await call("add_member", { p_group: id, p_name: null, p_username: u }); route(); } catch (e) { showErr($("perr"), e); }
+  };
+  $("addm").onclick = async () => {
     const n = $("newm").value.trim(); if (!n) return;
-    const { error } = await sb.from("members").insert({ group_id: id, name: n });
-    if (error) return fail(error); route();
+    try { await call("add_member", { p_group: id, p_name: n, p_username: null }); route(); } catch (e) { showErr($("perr"), e); }
   };
 }
 
 // The add / edit expense form
 function wireForm(ctx, me, editing) {
-  const { id, members } = ctx;
+  const { id } = ctx;
   const rows = () => [...document.querySelectorAll(".srow")];
 
   function updatePreview() {
@@ -373,7 +510,7 @@ function wireForm(ctx, me, editing) {
       el.className = tot === 100 ? "muted" : "err";
       if (tot === 100 && amount > 0) percentSplit(amount, entries).forEach((s) => show(s.member_id, s.share));
     } else if (amount > 0) {
-      const ids = rows().filter((r) => r.querySelector(".who").checked).map((r) => r.dataset.id);
+      const ids = rows().filter((r) => r.querySelector(".inc").checked).map((r) => r.dataset.id);
       if (ids.length) equalSplit(amount, ids).forEach((s) => show(s.member_id, s.share));
     }
   }
@@ -382,7 +519,7 @@ function wireForm(ctx, me, editing) {
     const next = b.dataset.mode;
     if (next === splitMode) return;
     if (next === "percent") {   // start from an even split between whoever is ticked
-      const ids = rows().filter((r) => r.querySelector(".who").checked).map((r) => r.dataset.id);
+      const ids = rows().filter((r) => r.querySelector(".inc").checked).map((r) => r.dataset.id);
       const even = Object.fromEntries(equalPercents(ids).map((e) => [e.id, e.percent]));
       rows().forEach((r) => (r.querySelector(".pct").value = even[r.dataset.id] ?? 0));
     }
@@ -392,7 +529,7 @@ function wireForm(ctx, me, editing) {
     updatePreview();
   }));
   ["amt", "ccy"].forEach((k) => ($(k).oninput = updatePreview));
-  rows().forEach((r) => { r.querySelector(".who").onchange = updatePreview; r.querySelector(".pct").oninput = updatePreview; });
+  rows().forEach((r) => { r.querySelector(".inc").onchange = updatePreview; r.querySelector(".pct").oninput = updatePreview; });
 
   if (editing) $("cancel").onclick = () => { editingId = null; drawGroup(ctx); };
 
@@ -406,7 +543,7 @@ function wireForm(ctx, me, editing) {
     let split;
     try {
       if (splitMode === "equal") {
-        const ids = rows().filter((r) => r.querySelector(".who").checked).map((r) => r.dataset.id);
+        const ids = rows().filter((r) => r.querySelector(".inc").checked).map((r) => r.dataset.id);
         if (!ids.length) throw new Error("Pick at least one person to split with.");
         split = equalSplit(amount, ids);
       } else {
@@ -414,12 +551,13 @@ function wireForm(ctx, me, editing) {
       }
     } catch (e) { err.textContent = e.message; return; }
     ev.target.disabled = true;
-    const { error } = await sb.rpc("save_expense", {
-      p_id: editing ? editing.id : null, p_group: id, p_description: description, p_amount: amount,
-      p_currency: currency, p_paid_by: $("payer").value, p_added_by: me.id, p_split_type: splitMode, p_splits: split });
-    if (error) { err.textContent = friendly(error.message); ev.target.disabled = false; return; }
-    setLastCurrency(currency);
-    route();
+    try {
+      await call("save_expense", {
+        p_id: editing ? editing.id : null, p_group: id, p_description: description, p_amount: amount,
+        p_currency: currency, p_paid_by: $("payer").value, p_split_type: splitMode, p_splits: split });
+      setLastCurrency(currency);
+      route();
+    } catch (e) { showErr(err, e); ev.target.disabled = false; }
   };
 
   updatePreview();
