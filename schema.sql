@@ -39,6 +39,11 @@ create table if not exists payments (
   created_at timestamptz not null default now()
 );
 
+-- Multi-currency: each expense / payment carries its own currency (no conversion).
+-- Safe to re-run on an existing database.
+alter table expenses add column if not exists currency text not null default 'SGD';
+alter table payments add column if not exists currency text not null default 'SGD';
+
 create index if not exists members_group_idx on members(group_id);
 create index if not exists expenses_group_idx on expenses(group_id);
 create index if not exists splits_expense_idx on splits(expense_id);

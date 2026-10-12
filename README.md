@@ -2,7 +2,11 @@
 
 A minimal Splitwise-style expense splitter. Static site (HTML/JS) on GitHub Pages, data in Supabase.
 
-Features: groups, members, equal-split expenses, live balances, simplified "who pays whom", settle up, invite by link.
+Features: groups, members, equal-split expenses, live balances, simplified "who pays whom", settle up, invite by link, password gate.
+
+Multi-currency: every expense and payment has its own currency (3-letter code). Balances and
+settle-up are tracked separately per currency, with no exchange-rate conversion, like Splitwise.
+Upgrading an existing database: re-run `schema.sql` (it adds the `currency` columns, default SGD).
 
 ## Setup
 
