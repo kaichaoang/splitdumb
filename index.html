@@ -100,6 +100,12 @@
   button.ghost:hover { color:var(--primary); border-color:var(--primary); filter:none; }
   button.danger:hover { color:var(--bad); border-color:var(--bad); }
   /* Save / Cancel row of the expense form: same height and type size, Save a bit wider */
+  /* currency: the visible box shows only the 3-letter code; a transparent native select sits on top so the picker still lists full names */
+  .selbox { position:relative; display:flex; margin:4px 0; }
+  .selbox .selshow { flex:1; display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; padding:11px 13px; border-radius:12px; border:1px solid var(--line); background:var(--surface); color:var(--ink); }
+  .selbox .selshow::after { content:""; flex:none; width:7px; height:7px; margin:-3px 2px 0 0; border-right:2px solid var(--ink); border-bottom:2px solid var(--ink); transform:rotate(45deg); }
+  .selbox select { position:absolute; inset:0; width:100%; height:100%; margin:0; padding:0; opacity:0; cursor:pointer; }
+  .selbox:focus-within .selshow { outline:2px solid var(--primary); outline-offset:1px; border-color:transparent; }
   .formbtns { display:flex; gap:8px; margin-top:8px; }
   .formbtns button, .formbtns button.ghost { flex:1; width:auto; height:44px; padding:0 14px; margin:0; font-size:16px; font-weight:700; }
   .formbtns button:first-child { flex:2; }
@@ -138,7 +144,10 @@
   .filters label { font-size:12.5px; color:var(--muted); font-weight:600; min-width:0; }
   /* one explicit height for every filter field, so the date boxes match the dropdowns */
   .filters input, .filters select { margin:2px 0 0; padding:0 10px; height:40px; line-height:normal; font-weight:400; min-width:0; max-width:100%; }
-  .filters input[type=date] { -webkit-appearance:none; appearance:none; }
+  .filters input[type=date] { -webkit-appearance:none; appearance:none; text-align:left; }
+  /* Safari / iPhone centres a chosen date inside the box; pin it to the left like the other fields */
+  .filters input[type=date]::-webkit-date-and-time-value { text-align:left; margin:0; }
+  .filters input[type=date]::-webkit-datetime-edit { padding:0; text-align:left; }
   .filters button { grid-column:1/-1; justify-self:start; }
   #toasts { position:fixed; z-index:50; top:64px; left:50%; transform:translateX(-50%); width:min(440px,calc(100vw - 24px)); display:flex; flex-direction:column; gap:8px; pointer-events:none; }
   .toast { pointer-events:auto; display:flex; align-items:flex-start; gap:10px; padding:12px 12px 12px 14px; border-radius:14px; background:var(--surface); border:1px solid var(--line);
@@ -684,7 +693,8 @@ function formHtml(ctx, editing) {
       <input data-f="desc" placeholder="What was it for?" value="${editing ? esc(editing.description) : ""}">
       <div class="grid2">
         <input data-f="amt" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Amount" value="${editing ? Number(editing.amount).toFixed(2) : ""}">
-        <select data-f="ccy" aria-label="Currency">${(known ? CURRENCIES : [[cur, ""], ...CURRENCIES]).map(([c, n]) => `<option value="${c}" ${c === cur ? "selected" : ""}>${c}${n ? " · " + n : ""}</option>`).join("")}<option value="OTHER">Other…</option></select>
+        <div class="selbox"><span class="selshow" data-f="ccyshow" aria-hidden="true">${esc(cur)}</span>
+          <select data-f="ccy" aria-label="Currency">${(known ? CURRENCIES : [[cur, ""], ...CURRENCIES]).map(([c, n]) => `<option value="${c}" ${c === cur ? "selected" : ""}>${c}${n ? " · " + n : ""}</option>`).join("")}<option value="OTHER">Other…</option></select></div>
         <input data-f="ccyother" class="upper" maxlength="3" placeholder="3-letter code" style="display:none;grid-column:1/-1">
       </div>
       <div class="muted" style="margin-top:6px">Category</div>
@@ -749,7 +759,11 @@ function wireForm(root, ctx, editing, onCancel) {
     updatePreview();
   }));
   ["amt", "ccyother"].forEach((k) => (f(k).oninput = updatePreview));
-  f("ccy").onchange = () => { f("ccyother").style.display = f("ccy").value === "OTHER" ? "" : "none"; if (f("ccy").value === "OTHER") f("ccyother").focus(); updatePreview(); };
+  f("ccy").onchange = () => {
+    const v = f("ccy").value;
+    f("ccyshow").textContent = v === "OTHER" ? "Other…" : v;   // the closed box shows just the code; the list shows full names
+    f("ccyother").style.display = v === "OTHER" ? "" : "none"; if (v === "OTHER") f("ccyother").focus(); updatePreview();
+  };
   rows().forEach((r) => { r.querySelector(".inc").onchange = updatePreview; r.querySelector(".pct").oninput = updatePreview; });
 
   if (editing) f("cancel").onclick = onCancel;
