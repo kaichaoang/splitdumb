@@ -396,7 +396,7 @@ function renderAccount() {
 
 // ------------------------------------------------------------------ a trip
 const openSecs = new Set();   // which collapsed sections the user has opened (survives redraws)
-const filt = { gid: null, from: "", to: "", by: "", paid: "", cur: "" };   // expense list filters
+const filt = { gid: null, from: "", to: "", by: "", paid: "", cur: "", cat: "" };   // expense list filters
 let editingId = null;   // expense being edited, if any
 let splitMode = "equal";
 
@@ -417,7 +417,7 @@ async function renderGroup(id) {
 }
 
 function drawGroup(ctx) {
-  if (filt.gid !== ctx.id) Object.assign(filt, { gid: ctx.id, from: "", to: "", by: "", paid: "", cur: "" });
+  if (filt.gid !== ctx.id) Object.assign(filt, { gid: ctx.id, from: "", to: "", by: "", paid: "", cur: "", cat: "" });
   const { id, group, meId, members, expenses, payments, splits } = ctx;
   const me = members.find((m) => m.id === meId);
   const name = Object.fromEntries(members.map((m) => [m.id, m.name]));
@@ -512,6 +512,7 @@ function drawGroup(ctx) {
         <label>To<input type="date" id="f_to" value="${filt.to}"></label>
         <label>Added by<select id="f_by"><option value="">Anyone</option>${members.map((m) => `<option value="${m.id}" ${filt.by === m.id ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select></label>
         <label>Paid by<select id="f_paid"><option value="">Anyone</option>${members.map((m) => `<option value="${m.id}" ${filt.paid === m.id ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select></label>
+        <label>Category<select id="f_cat"><option value="">All</option><option value="none" ${filt.cat === "none" ? "selected" : ""}>No category</option>${CATS.filter(([k]) => k).map(([k, label]) => `<option value="${k}" ${filt.cat === k ? "selected" : ""}>${label}</option>`).join("")}</select></label>
         <label>Currency<select id="f_cur"><option value="">All</option>${[...new Set(expenses.map(curOf))].sort().map((c) => `<option ${filt.cur === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
         <button type="button" class="ghost" id="f_clear">Clear filters</button>
       </div>` : ""}
@@ -550,7 +551,8 @@ function drawGroup(ctx) {
   function paintExp() {
     const list = expenses.filter((e) =>
       (!filt.from || localDay(e.created_at) >= filt.from) && (!filt.to || localDay(e.created_at) <= filt.to) &&
-      (!filt.by || e.added_by === filt.by) && (!filt.paid || e.paid_by === filt.paid) && (!filt.cur || curOf(e) === filt.cur));
+      (!filt.by || e.added_by === filt.by) && (!filt.paid || e.paid_by === filt.paid) && (!filt.cur || curOf(e) === filt.cur) &&
+      (!filt.cat || (filt.cat === "none" ? !catKey(e.category) : catKey(e.category) === filt.cat)));
     shown = list;
     if ($("csvn")) $("csvn").textContent = list.length === expenses.length ? "" : `(${list.length} filtered)`;
     $("expcount").textContent = list.length === expenses.length ? expenses.length : `${list.length} of ${expenses.length}`;
@@ -576,9 +578,9 @@ function drawGroup(ctx) {
     }));
   }
   if (expenses.length) {
-    [["f_from", "from"], ["f_to", "to"], ["f_by", "by"], ["f_paid", "paid"], ["f_cur", "cur"]].forEach(([el, k]) =>
+    [["f_from", "from"], ["f_to", "to"], ["f_by", "by"], ["f_paid", "paid"], ["f_cat", "cat"], ["f_cur", "cur"]].forEach(([el, k]) =>
       ($(el).onchange = $(el).oninput = () => { filt[k] = $(el).value; paintExp(); }));
-    $("f_clear").onclick = () => { Object.assign(filt, { from: "", to: "", by: "", paid: "", cur: "" }); ["f_from", "f_to", "f_by", "f_paid", "f_cur"].forEach((x) => ($(x).value = "")); paintExp(); };
+    $("f_clear").onclick = () => { Object.assign(filt, { from: "", to: "", by: "", paid: "", cur: "", cat: "" }); ["f_from", "f_to", "f_by", "f_paid", "f_cat", "f_cur"].forEach((x) => ($(x).value = "")); paintExp(); };
   }
   if (expenses.length) $("f_csv").onclick = () => {
     const cell = (v) => { let t = v == null ? "" : String(v); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;   // stop spreadsheet formula injection
