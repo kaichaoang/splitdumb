@@ -105,6 +105,13 @@
   .prev { min-width:84px; text-align:right; font-variant-numeric:tabular-nums; }
   #splitbox.mode-percent .pctwrap { display:flex; } #splitbox.mode-percent .inc { display:none; }
   #splitbox:not(.mode-percent) #pcttotal { display:none; }
+  details.sec { margin:14px 0; background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow); padding:0 14px; }
+  details.sec > summary { cursor:pointer; list-style:none; padding:14px 0; font-weight:700; display:flex; justify-content:space-between; align-items:center; }
+  details.sec > summary::-webkit-details-marker { display:none; }
+  details.sec > summary::after { content:"▾"; color:var(--muted); transition:transform .15s; }
+  details.sec[open] > summary::after { transform:rotate(180deg); }
+  details.sec[open] > summary { border-bottom:1px solid var(--line); margin-bottom:8px; }
+  details.sec .card { box-shadow:none; }
   .btns { display:flex; gap:6px; align-items:center; }
   .exp { align-items:flex-start; }
   .exp .title { font-weight:600; }
@@ -334,6 +341,7 @@ function renderAccount() {
 }
 
 // ------------------------------------------------------------------ a trip
+const openSecs = new Set();   // which collapsed sections the user has opened (survives redraws)
 let editingId = null;   // expense being edited, if any
 let splitMode = "equal";
 
@@ -383,26 +391,6 @@ function drawGroup(ctx) {
       <button class="ghost" id="copy">Copy link</button></div>
     <div class="muted">${members.length} people · you are ${esc(me.name)}</div>
 
-    <h2>Balances</h2>
-    ${curs.length ? curs.map((c) => `<div class="cur">${esc(c)}</div>` + members.map((m) => { const b = byCur[c][m.id];
-      return `<div class="card row"><div class="person">${av(m.name)}<span>${esc(m.name)}${youTag(m)}</span></div>
-        <span class="amt ${b > 0 ? "pos" : b < 0 ? "neg" : "zero"}">${b > 0 ? "gets back " + esc(c) + " " + money(b) : b < 0 ? "owes " + esc(c) + " " + money(-b) : "settled"}</span></div>`; }).join("")).join("")
-      : `<div class="muted">No expenses yet.</div>`}
-
-    <h2>Settle up</h2>
-    ${debts.length ? debts.map((d, i) => `<div class="card row">
-        <span>${esc(name[d.from])} pays ${esc(name[d.to])} <b>${esc(d.currency)} ${money(d.cents)}</b></span>
-        <button class="ghost" data-settle="${i}">Mark paid</button></div>`).join("")
-      : `<div class="muted">${expenses.length ? "Everyone is settled up." : "Nothing to settle yet."}</div>`}
-
-    <h2>Spending</h2>
-    ${curs.length ? Object.entries(spend).map(([c, s]) => `<div class="cur">${esc(c)} · group total ${money(s.total)}</div>` +
-      members.map((m) => { const r = s.byMember[m.id];
-        return `<div class="card row"><div class="person">${av(m.name)}<span>${esc(m.name)}${youTag(m)}</span></div>
-          <span><b>${esc(c)} ${money(r.spent)}</b> <span class="muted">spent · paid ${money(r.paid)}</span></span></div>`; }).join("")).join("")
-      + `<div class="muted">Spent = each person's share of the expenses. Paid = what they put up front.</div>`
-      : `<div class="muted">No expenses yet.</div>`}
-
     <h2>${editing ? "Edit expense" : "Add expense"}</h2>
     <div class="card" id="expform">
       <input id="desc" placeholder="What was it for?" value="${editing ? esc(editing.description) : ""}">
@@ -433,6 +421,32 @@ function drawGroup(ctx) {
       <div id="err" class="err"></div>
     </div>
 
+    <details class="sec" data-sec="bal" ${openSecs.has("bal") ? "open" : ""}><summary>Balances</summary>
+    ${curs.length ? curs.map((c) => `<div class="cur">${esc(c)}</div>` + members.map((m) => { const b = byCur[c][m.id];
+      return `<div class="card row"><div class="person">${av(m.name)}<span>${esc(m.name)}${youTag(m)}</span></div>
+        <span class="amt ${b > 0 ? "pos" : b < 0 ? "neg" : "zero"}">${b > 0 ? "gets back " + esc(c) + " " + money(b) : b < 0 ? "owes " + esc(c) + " " + money(-b) : "settled"}</span></div>`; }).join("")).join("")
+      : `<div class="muted">No expenses yet.</div>`}
+
+    </details>
+
+    <details class="sec" data-sec="settle" ${openSecs.has("settle") ? "open" : ""}><summary><span>Settle up${debts.length ? ` <span class="tag open">${debts.length} to pay</span>` : ""}</span></summary>
+    ${debts.length ? debts.map((d, i) => `<div class="card row">
+        <span>${esc(name[d.from])} pays ${esc(name[d.to])} <b>${esc(d.currency)} ${money(d.cents)}</b></span>
+        <button class="ghost" data-settle="${i}">Mark paid</button></div>`).join("")
+      : `<div class="muted">${expenses.length ? "Everyone is settled up." : "Nothing to settle yet."}</div>`}
+
+    </details>
+
+    <details class="sec" data-sec="spend" ${openSecs.has("spend") ? "open" : ""}><summary>Spending</summary>
+    ${curs.length ? Object.entries(spend).map(([c, s]) => `<div class="cur">${esc(c)} · group total ${money(s.total)}</div>` +
+      members.map((m) => { const r = s.byMember[m.id];
+        return `<div class="card row"><div class="person">${av(m.name)}<span>${esc(m.name)}${youTag(m)}</span></div>
+          <span><b>${esc(c)} ${money(r.spent)}</b> <span class="muted">spent · paid ${money(r.paid)}</span></span></div>`; }).join("")).join("")
+      + `<div class="muted">Spent = each person's share of the expenses. Paid = what they put up front.</div>`
+      : `<div class="muted">No expenses yet.</div>`}
+
+    </details>
+
     <h2>Expenses</h2>
     ${expenses.length ? expenses.map((e) => {
       const sp = splits.filter((s) => s.expense_id === e.id);
@@ -459,6 +473,7 @@ function drawGroup(ctx) {
     </div>`;
 
   // ---- wiring
+  document.querySelectorAll('details.sec').forEach((el) => (el.ontoggle = () => (el.open ? openSecs.add(el.dataset.sec) : openSecs.delete(el.dataset.sec))));
   $("copy").onclick = async (ev) => {
     const url = location.href;
     try { await navigator.clipboard.writeText(url); ev.target.textContent = "Copied!"; }

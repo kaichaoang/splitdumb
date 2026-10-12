@@ -57,7 +57,7 @@ create table if not exists sessions (
   token_hash text primary key,
   user_id uuid not null references app_users(id) on delete cascade,
   created_at timestamptz not null default now(),
-  expires_at timestamptz not null default now() + interval '60 days'
+  expires_at timestamptz not null default now() + interval '1 year'
 );
 
 -- failed logins, for throttling
@@ -102,6 +102,8 @@ drop function if exists save_expense(uuid, uuid, text, numeric, text, uuid, uuid
 drop function if exists register_user(text, text);
 drop function if exists login_user(text, text);
 
+alter table sessions alter column expires_at set default now() + interval '1 year';
+
 -- ------------------------------------------------- internal helpers (not callable via the API)
 create or replace function user_json(u app_users) returns jsonb
 language sql immutable
@@ -126,6 +128,9 @@ begin
   select s.user_id into uid from sessions s
    where s.token_hash = encode(sha256(convert_to(coalesce(p_token, ''), 'utf8')), 'hex') and s.expires_at > now();
   if uid is null then raise exception 'Session expired. Please log in again.'; end if;
+  -- stay logged in while you keep using it: push expiry out to a year from the last use
+  update sessions set expires_at = now() + interval '1 year'
+   where token_hash = encode(sha256(convert_to(coalesce(p_token, ''), 'utf8')), 'hex') and expires_at < now() + interval '300 days';
   return uid;
 end $$;
 
