@@ -115,6 +115,14 @@
   .filters { display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; padding:4px 0 10px; }
   .filters label { font-size:12.5px; color:var(--muted); font-weight:600; } .filters input, .filters select { margin:2px 0 0; padding:8px 10px; font-weight:400; }
   .filters button { grid-column:1/-1; justify-self:start; }
+  #toasts { position:fixed; z-index:50; top:64px; left:50%; transform:translateX(-50%); width:min(440px,calc(100vw - 24px)); display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+  .toast { pointer-events:auto; display:flex; align-items:flex-start; gap:10px; padding:12px 12px 12px 14px; border-radius:14px; background:var(--surface); border:1px solid var(--line);
+           box-shadow:0 10px 30px rgba(20,20,60,.28); font-size:15px; animation:tin .18s ease-out; }
+  .toast.err { border-left:5px solid var(--bad); } .toast.err .ti { color:var(--bad); }
+  .toast.ok { border-left:5px solid var(--good); } .toast.ok .ti { color:var(--good); }
+  .toast .tm { flex:1; word-break:break-word; }
+  .toast .tx { width:auto; margin:0; padding:0 6px; background:transparent; color:var(--muted); font-size:20px; line-height:1; }
+  @keyframes tin { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
   .btns { display:flex; gap:6px; align-items:center; }
   .exp { align-items:flex-start; }
   .exp .title { font-weight:600; }
@@ -126,6 +134,7 @@
   <a class="logo" href="#/">Split<span>Dumb</span></a>
   <span id="barright"></span>
 </header>
+<div id="toasts" aria-live="polite"></div>
 <div id="scrim"></div>
 <aside id="side"></aside>
 <main id="main"><div id="app">Loading…</div></main>
@@ -176,7 +185,17 @@ async function callPublic(fn, args) {
   if (error) throw new Error(error.message);
   return data;
 }
-const showErr = (el, e) => { el.textContent = friendly(e.message); el.className = "err"; if (e.expired) route(); };
+function toast(msg, kind = "err") {
+  const t = document.createElement("div");
+  t.className = "toast " + kind; t.setAttribute("role", kind === "err" ? "alert" : "status");
+  t.innerHTML = `<span class="ti">${kind === "err" ? "⚠" : "✓"}</span><span class="tm"></span><button type="button" class="tx" aria-label="Dismiss">×</button>`;
+  t.querySelector(".tm").textContent = msg;
+  const close = () => t.remove();
+  t.querySelector(".tx").onclick = close;
+  $("toasts").appendChild(t);
+  setTimeout(close, kind === "err" ? 9000 : 4000);
+}
+const showErr = (_el, e) => { toast(friendly(e.message)); if (e.expired) route(); };
 
 // ------------------------------------------------------------------ shell: top bar + side menu
 let trips = [];
@@ -231,15 +250,15 @@ function renderAuth(notice) {
   document.querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => { authMode = b.dataset.m; renderAuth(); }));
   const go = async () => {
     const username = $("u").value.trim(), password = $("p").value;
-    if (!username || !password) { $("err").textContent = "Enter a username and password."; return; }
-    if (signup && password !== $("p2").value) { $("err").textContent = "Passwords don't match."; return; }
+    if (!username || !password) { toast("Enter a username and password."); return; }
+    if (signup && password !== $("p2").value) { toast("Passwords don't match."); return; }
     $("go").disabled = true;
     try {
       const d = await callPublic(signup ? "register_user" : "login_user", { p_username: username, p_password: password });
       if (d.error) throw new Error(d.error);
       setSession({ token: d.token, id: d.id, username: d.username, display_name: d.display_name });
       route();
-    } catch (e) { $("err").textContent = friendly(e.message); $("go").disabled = false; }
+    } catch (e) { toast(friendly(e.message)); $("go").disabled = false; }
   };
   $("go").onclick = go;
   ["u", "p", "p2"].forEach((id) => { const el = $(id); if (el) el.onkeydown = (e) => { if (e.key === "Enter") go(); }; });
@@ -285,11 +304,10 @@ function renderNew() {
       <input id="gmembers" placeholder="Names of people without an account (optional, comma separated)">
       <div class="muted">You are added automatically. After creating, add friends who have accounts by their username.</div>
       <button id="create" style="margin-top:10px">Create trip</button>
-      <div id="err" class="err"></div>
     </div>`;
   $("create").onclick = async (ev) => {
     const name = $("gname").value.trim();
-    if (!name) { $("err").textContent = "Give the trip a name."; return; }
+    if (!name) { toast("Give the trip a name."); return; }
     ev.target.disabled = true;
     try {
       const r = await call("create_group", { p_name: name, p_others: $("gmembers").value.split(",").map((s) => s.trim()).filter(Boolean) });
@@ -311,7 +329,6 @@ function renderAccount() {
       <div class="muted">Shown to everyone in your trips.</div>
       <input id="dn" maxlength="30" value="${esc(session.display_name || session.username)}">
       <button id="dnsave">Save name</button>
-      <div id="dnmsg"></div>
     </div>
     <h2>Change password</h2>
     <div class="card">
@@ -319,7 +336,6 @@ function renderAccount() {
       <input id="np" type="password" placeholder="New password (6+ characters)" autocomplete="new-password">
       <input id="np2" type="password" placeholder="Confirm new password" autocomplete="new-password">
       <button id="pwsave">Change password</button>
-      <div id="pwmsg"></div>
     </div>`;
   $("dnsave").onclick = async (ev) => {
     ev.target.disabled = true;
@@ -327,17 +343,17 @@ function renderAccount() {
       const u = await call("set_display_name", { p_name: $("dn").value });
       setSession({ ...session, display_name: u.display_name });
       renderShell();
-      $("dnmsg").textContent = "Saved. Your new name now shows in all your trips."; $("dnmsg").className = "ok";
+      toast("Saved. Your new name now shows in all your trips.", "ok");
     } catch (e) { showErr($("dnmsg"), e); }
     ev.target.disabled = false;
   };
   $("pwsave").onclick = async (ev) => {
-    if ($("np").value !== $("np2").value) { $("pwmsg").textContent = "New passwords don't match."; $("pwmsg").className = "err"; return; }
+    if ($("np").value !== $("np2").value) { toast("New passwords don't match."); return; }
     ev.target.disabled = true;
     try {
       await call("change_password", { p_old: $("op").value, p_new: $("np").value });
       $("op").value = $("np").value = $("np2").value = "";
-      $("pwmsg").textContent = "Password changed. You've been signed out on your other devices."; $("pwmsg").className = "ok";
+      toast("Password changed. You've been signed out on your other devices.", "ok");
     } catch (e) { showErr($("pwmsg"), e); }
     ev.target.disabled = false;
   };
@@ -423,7 +439,6 @@ function drawGroup(ctx) {
         <button id="save">${editing ? "Save changes" : "Add expense"}</button>
         ${editing ? `<button id="cancel" class="ghost" type="button">Cancel</button>` : ""}
       </div>
-      <div id="err" class="err"></div>
     </div>
 
     <details class="sec" data-sec="bal" ${openSecs.has("bal") ? "open" : ""}><summary>Balances</summary>
@@ -474,7 +489,6 @@ function drawGroup(ctx) {
       <div class="grid2b"><input id="newu" placeholder="their username" autocapitalize="none" autocorrect="off" spellcheck="false"><button id="addu">Add</button></div>
       <div class="muted" style="margin-top:8px">Or add someone by name only (no account)</div>
       <div class="grid2b"><input id="newm" placeholder="Name"><button id="addm">Add</button></div>
-      <div id="perr" class="err"></div>
     </div>`;
 
   // ---- wiring
@@ -611,9 +625,9 @@ function wireForm(ctx, me, editing) {
     const err = $("err");
     const description = $("desc").value.trim(), amount = parseFloat($("amt").value);
     const currency = getCcy();
-    if (!description) { err.textContent = "What was it for?"; return; }
-    if (!(amount > 0)) { err.textContent = "Enter an amount more than 0."; return; }
-    if (!/^[A-Z]{3}$/.test(currency)) { err.textContent = "Currency must be a 3-letter code, e.g. SGD or MYR."; return; }
+    if (!description) { toast("What was it for?"); return; }
+    if (!(amount > 0)) { toast("Enter an amount more than 0."); return; }
+    if (!/^[A-Z]{3}$/.test(currency)) { toast("Currency must be a 3-letter code, e.g. SGD or MYR."); return; }
     let split;
     try {
       if (splitMode === "equal") {
@@ -623,7 +637,7 @@ function wireForm(ctx, me, editing) {
       } else {
         split = percentSplit(amount, rows().map((r) => ({ id: r.dataset.id, percent: parseFloat(r.querySelector(".pct").value) || 0 })));
       }
-    } catch (e) { err.textContent = e.message; return; }
+    } catch (e) { toast(e.message); return; }
     ev.target.disabled = true;
     try {
       await call("save_expense", {
