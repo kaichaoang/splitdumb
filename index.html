@@ -112,6 +112,9 @@
   details.sec[open] > summary::after { transform:rotate(180deg); }
   details.sec[open] > summary { border-bottom:1px solid var(--line); margin-bottom:8px; }
   details.sec .card { box-shadow:none; }
+  .filters { display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; padding:4px 0 10px; }
+  .filters label { font-size:12.5px; color:var(--muted); font-weight:600; } .filters input, .filters select { margin:2px 0 0; padding:8px 10px; font-weight:400; }
+  .filters button { grid-column:1/-1; justify-self:start; }
   .btns { display:flex; gap:6px; align-items:center; }
   .exp { align-items:flex-start; }
   .exp .title { font-weight:600; }
@@ -342,6 +345,7 @@ function renderAccount() {
 
 // ------------------------------------------------------------------ a trip
 const openSecs = new Set();   // which collapsed sections the user has opened (survives redraws)
+const filt = { gid: null, from: "", to: "", by: "", paid: "", cur: "" };   // expense list filters
 let editingId = null;   // expense being edited, if any
 let splitMode = "equal";
 
@@ -362,6 +366,7 @@ async function renderGroup(id) {
 }
 
 function drawGroup(ctx) {
+  if (filt.gid !== ctx.id) Object.assign(filt, { gid: ctx.id, from: "", to: "", by: "", paid: "", cur: "" });
   const { id, group, meId, members, expenses, payments, splits } = ctx;
   const me = members.find((m) => m.id === meId);
   const name = Object.fromEntries(members.map((m) => [m.id, m.name]));
@@ -387,7 +392,7 @@ function drawGroup(ctx) {
   app.innerHTML = `
     <a class="back" href="#/">← All trips</a>
     <div class="row" style="margin-bottom:2px">
-      <div class="person"><h2 class="page">${esc(group.name)}</h2>${tagHtml(kind)}</div>
+      <div class="person"><h2 class="page">${esc(group.name)}</h2><button class="ghost" id="rename" title="Rename trip" aria-label="Rename trip">✎</button>${tagHtml(kind)}</div>
       <button class="ghost" id="copy">Copy link</button></div>
     <div class="muted">${members.length} people · you are ${esc(me.name)}</div>
 
@@ -447,18 +452,17 @@ function drawGroup(ctx) {
 
     </details>
 
-    <h2>Expenses</h2>
-    ${expenses.length ? expenses.map((e) => {
-      const sp = splits.filter((s) => s.expense_id === e.id);
-      const mine = sp.find((s) => s.member_id === meId);
-      const line2 = (mine ? `Your share: ${esc(curOf(e))} ${Number(mine.share).toFixed(2)}` : "You're not in this split")
-        + (e.split_type === "percent" ? " · " + sp.map((s) => `${esc(name[s.member_id] || "?")} ${Number(s.percent)}%`).join(", ") : "");
-      return `<div class="card row exp">
-        <div><div class="title">${esc(e.description)}</div>
-          <div class="muted">${esc(name[e.paid_by] || "?")} paid ${esc(curOf(e))} ${Number(e.amount).toFixed(2)} · ${new Date(e.created_at).toLocaleDateString()}${e.added_by && name[e.added_by] ? ` · added by ${esc(name[e.added_by])}` : ""}</div>
-          <div class="muted">${line2}</div></div>
-        <div class="btns"><button class="ghost" data-edit="${e.id}">Edit</button><button class="ghost danger" data-del="${e.id}">Delete</button></div></div>`; }).join("")
-      : `<div class="muted">No expenses yet.</div>`}
+    <details class="sec" data-sec="exp" ${openSecs.has("exp") ? "open" : ""}><summary><span>Expenses <span class="tag new" id="expcount">${expenses.length}</span></span></summary>
+      ${expenses.length ? `<div class="filters">
+        <label>From<input type="date" id="f_from" value="${filt.from}"></label>
+        <label>To<input type="date" id="f_to" value="${filt.to}"></label>
+        <label>Added by<select id="f_by"><option value="">Anyone</option>${members.map((m) => `<option value="${m.id}" ${filt.by === m.id ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select></label>
+        <label>Paid by<select id="f_paid"><option value="">Anyone</option>${members.map((m) => `<option value="${m.id}" ${filt.paid === m.id ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select></label>
+        <label>Currency<select id="f_cur"><option value="">All</option>${[...new Set(expenses.map(curOf))].sort().map((c) => `<option ${filt.cur === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
+        <button type="button" class="ghost" id="f_clear">Clear filters</button>
+      </div>` : ""}
+      <div id="explist"></div>
+    </details>
 
     <h2>People</h2>
     ${members.map((m) => `<div class="card row"><div class="person">${av(m.name)}<div>${esc(m.name)}${youTag(m)}
@@ -479,16 +483,46 @@ function drawGroup(ctx) {
     try { await navigator.clipboard.writeText(url); ev.target.textContent = "Copied!"; }
     catch { prompt("Copy this link:", url); }
   };
+  $("rename").onclick = async () => {
+    const n = prompt("Rename trip:", group.name);
+    if (n === null || !n.trim() || n.trim() === group.name) return;
+    try { await call("rename_group", { p_group: id, p_name: n.trim() }); route(); } catch (e) { showErr($("perr"), e); }
+  };
   wireForm(ctx, me, editing);
 
-  document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => {
-    editingId = b.dataset.edit; drawGroup(ctx);
-    const f = $("expform"); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: "smooth", block: "center" });
-  }));
-  document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
-    if (!confirm("Delete this expense?")) return;
-    try { await call("delete_expense", { p_expense: b.dataset.del }); route(); } catch (e) { showErr($("perr"), e); }
-  }));
+  // ---- expenses list (filters redraw only the list, so typing/focus isn't lost)
+  const localDay = (iso) => { const t = new Date(iso); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; };
+  function paintExp() {
+    const list = expenses.filter((e) =>
+      (!filt.from || localDay(e.created_at) >= filt.from) && (!filt.to || localDay(e.created_at) <= filt.to) &&
+      (!filt.by || e.added_by === filt.by) && (!filt.paid || e.paid_by === filt.paid) && (!filt.cur || curOf(e) === filt.cur));
+    $("expcount").textContent = list.length === expenses.length ? expenses.length : `${list.length} of ${expenses.length}`;
+    $("explist").innerHTML = list.length ? list.map((e) => {
+      const sp = splits.filter((s) => s.expense_id === e.id);
+      const mine = sp.find((s) => s.member_id === meId);
+      const line2 = (mine ? `Your share: ${esc(curOf(e))} ${Number(mine.share).toFixed(2)}` : "You're not in this split")
+        + (e.split_type === "percent" ? " · " + sp.map((s) => `${esc(name[s.member_id] || "?")} ${Number(s.percent)}%`).join(", ") : "");
+      return `<div class="card row exp">
+        <div><div class="title">${esc(e.description)}</div>
+          <div class="muted">${esc(name[e.paid_by] || "?")} paid ${esc(curOf(e))} ${Number(e.amount).toFixed(2)} · ${new Date(e.created_at).toLocaleDateString()}${e.added_by && name[e.added_by] ? ` · added by ${esc(name[e.added_by])}` : ""}</div>
+          <div class="muted">${line2}</div></div>
+        <div class="btns"><button class="ghost" data-edit="${e.id}">Edit</button><button class="ghost danger" data-del="${e.id}">Delete</button></div></div>`; }).join("")
+      : `<div class="muted" style="padding:6px 0 12px">${expenses.length ? "No expenses match these filters." : "No expenses yet."}</div>`;
+    document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => {
+      editingId = b.dataset.edit; drawGroup(ctx);
+      const f = $("expform"); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: "smooth", block: "center" });
+    }));
+    document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+      if (!confirm("Delete this expense?")) return;
+      try { await call("delete_expense", { p_expense: b.dataset.del }); route(); } catch (e) { showErr($("perr"), e); }
+    }));
+  }
+  if (expenses.length) {
+    [["f_from", "from"], ["f_to", "to"], ["f_by", "by"], ["f_paid", "paid"], ["f_cur", "cur"]].forEach(([el, k]) =>
+      ($(el).onchange = $(el).oninput = () => { filt[k] = $(el).value; paintExp(); }));
+    $("f_clear").onclick = () => { Object.assign(filt, { from: "", to: "", by: "", paid: "", cur: "" }); ["f_from", "f_to", "f_by", "f_paid", "f_cur"].forEach((x) => ($(x).value = "")); paintExp(); };
+  }
+  paintExp();
   document.querySelectorAll("[data-settle]").forEach((b) => (b.onclick = async () => {
     const d = debts[+b.dataset.settle];
     b.disabled = true;

@@ -433,6 +433,19 @@ begin
   return pid;
 end $$;
 
+-- Rename a trip you are in.
+create or replace function rename_group(p_token text, p_group uuid, p_name text) returns jsonb
+language plpgsql security definer set search_path = public, extensions, pg_temp
+as $$
+declare uid uuid := auth_user(p_token); mid uuid := member_of(uid, p_group);
+begin
+  if btrim(coalesce(p_name, '')) = '' or length(btrim(p_name)) > 60 then
+    raise exception 'Trip name must be 1-60 characters';
+  end if;
+  update groups set name = btrim(p_name) where id = p_group;
+  return jsonb_build_object('id', p_group, 'name', btrim(p_name));
+end $$;
+
 -- ------------------------------------------------------------ who may call what
 revoke all on function user_json(app_users), new_session(uuid), auth_user(text), member_of(uuid, uuid), group_settled(uuid)
   from public, anon, authenticated;
@@ -440,7 +453,7 @@ revoke all on function user_json(app_users), new_session(uuid), auth_user(text),
 grant execute on function
   register_user(text, text), login_user(text, text), logout(text), me(text),
   change_password(text, text, text), set_display_name(text, text),
-  my_groups(text), create_group(text, text, text[]), get_group(text, uuid),
+  my_groups(text), create_group(text, text, text[]), rename_group(text, uuid, text), get_group(text, uuid),
   add_member(text, uuid, text, text), link_member(text, uuid, text),
   save_expense(text, uuid, uuid, text, numeric, text, uuid, text, jsonb),
   delete_expense(text, uuid), add_payment(text, uuid, uuid, uuid, numeric, text)
