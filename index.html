@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SplitLite</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1c2430; --muted:#6b7686; --accent:#1fa971; --red:#d64545; --line:#e4e8ee; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12161c; --card:#1b2129; --ink:#e8edf3; --muted:#8c98a8; --line:#2a323d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:640px; margin:0 auto; padding:16px; }
+  h1 { font-size:22px; margin:8px 0 16px; } h1 a { color:inherit; text-decoration:none; }
+  h2 { font-size:15px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:24px 0 8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:8px; }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .muted { color:var(--muted); font-size:14px; }
+  .pos { color:var(--accent); font-weight:600; } .neg { color:var(--red); font-weight:600; }
+  input, select, button { font:inherit; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); width:100%; margin:4px 0; }
+  button { background:var(--accent); color:#fff; border:0; cursor:pointer; font-weight:600; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); width:auto; padding:4px 10px; font-weight:400; }
+  button:disabled { opacity:.5; }
+  label.chk { display:flex; align-items:center; gap:8px; padding:4px 0; } label.chk input { width:auto; margin:0; }
+  .err { color:var(--red); margin:8px 0; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1><a href="#/">SplitLite</a></h1>
+  <div id="app">Loading…</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="logic.js"></script>
+<script>
+const app = document.getElementById("app");
+const configured = window.SUPABASE_URL && !window.SUPABASE_URL.includes("YOUR-PROJECT");
+const sb = configured ? supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY) : null;
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const money = (cents) => (cents / 100).toFixed(2);
+const getSaved = () => { try { return JSON.parse(localStorage.getItem("groups") || "[]"); } catch { return []; } };
+const saveGroup = (g) => {
+  try { const all = getSaved().filter((x) => x.id !== g.id); all.unshift({ id: g.id, name: g.name });
+        localStorage.setItem("groups", JSON.stringify(all)); } catch {}
+};
+const fail = (e) => { app.innerHTML = `<div class="err">${esc(e.message || e)}</div><a href="#/">Back</a>`; };
+
+// Simple password gate (client-side only: deters casual visitors, not a determined attacker).
+async function sha256(s) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+const isUnlocked = () => { try { return localStorage.getItem("unlocked") === window.APP_PASSWORD_SHA256; } catch { return false; } };
+
+function renderLogin() {
+  app.innerHTML = `<div class="card">
+    <input id="pw" type="password" placeholder="Password" autofocus>
+    <button id="login">Unlock</button>
+    <div id="err" class="err"></div></div>`;
+  const go = async () => {
+    if ((await sha256(pw.value)) === window.APP_PASSWORD_SHA256) {
+      try { localStorage.setItem("unlocked", window.APP_PASSWORD_SHA256); } catch {}
+      route();
+    } else err.textContent = "Wrong password.";
+  };
+  document.getElementById("login").onclick = go;
+  pw.onkeydown = (e) => { if (e.key === "Enter") go(); };
+}
+
+async function route() {
+  if (!window.APP_PASSWORD_SHA256) {
+    app.innerHTML = `<div class="card">No password set. Add <code>APP_PASSWORD_SHA256</code> to <code>config.js</code>.</div>`;
+    return;
+  }
+  if (!isUnlocked()) return renderLogin();
+  if (!configured) {
+    app.innerHTML = `<div class="card">Set your Supabase URL and anon key in <code>config.js</code> first.</div>`;
+    return;
+  }
+  const m = location.hash.match(/^#\/g\/([0-9a-f-]{36})$/i);
+  try { m ? await renderGroup(m[1]) : renderHome(); } catch (e) { fail(e); }
+}
+
+function renderHome() {
+  const saved = getSaved();
+  app.innerHTML = `
+    <h2>Your groups</h2>
+    ${saved.length ? saved.map((g) => `<a class="card row" href="#/g/${g.id}" style="text-decoration:none;color:inherit">
+        <span>${esc(g.name)}</span><span class="muted">open →</span></a>`).join("")
+      : `<div class="muted">No groups yet on this device.</div>`}
+    <h2>New group</h2>
+    <div class="card">
+      <input id="gname" placeholder="Group name (e.g. Bali trip)">
+      <input id="gmembers" placeholder="Members, comma separated (e.g. Ana, Ben, Chen)">
+      <button id="create">Create group</button>
+      <div id="err" class="err"></div>
+    </div>
+    <h2>Join with a code</h2>
+    <div class="card">
+      <input id="code" placeholder="Paste group code or link">
+      <button id="join">Join</button>
+    </div>`;
+  document.getElementById("create").onclick = async (ev) => {
+    const name = gname.value.trim();
+    const names = [...new Set(gmembers.value.split(",").map((s) => s.trim()).filter(Boolean))];
+    if (!name || names.length < 2) { err.textContent = "Need a name and at least 2 members."; return; }
+    ev.target.disabled = true;
+    const { data: g, error } = await sb.from("groups").insert({ name }).select().single();
+    if (error) { err.textContent = error.message; ev.target.disabled = false; return; }
+    const { error: e2 } = await sb.from("members").insert(names.map((n) => ({ group_id: g.id, name: n })));
+    if (e2) { err.textContent = e2.message; ev.target.disabled = false; return; }
+    saveGroup(g); location.hash = `#/g/${g.id}`;
+  };
+  document.getElementById("join").onclick = () => {
+    const id = (code.value.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) || [])[0];
+    if (id) location.hash = `#/g/${id}`; else err.textContent = "That doesn't look like a group code.";
+  };
+}
+
+async function renderGroup(id) {
+  const [g, mem, exp, pay] = await Promise.all([
+    sb.from("groups").select("*").eq("id", id).maybeSingle(),
+    sb.from("members").select("*").eq("group_id", id).order("name"),
+    sb.from("expenses").select("*").eq("group_id", id).order("created_at", { ascending: false }),
+    sb.from("payments").select("*").eq("group_id", id).order("created_at", { ascending: false }),
+  ]);
+  for (const r of [g, mem, exp, pay]) if (r.error) throw r.error;
+  if (!g.data) throw new Error("Group not found.");
+  const expIds = exp.data.map((e) => e.id);
+  const spl = expIds.length ? await sb.from("splits").select("*").in("expense_id", expIds) : { data: [] };
+  if (spl.error) throw spl.error;
+
+  saveGroup(g.data);
+  const members = mem.data, expenses = exp.data, payments = pay.data, splits = spl.data;
+  const name = Object.fromEntries(members.map((m) => [m.id, m.name]));
+  const bal = computeBalances(members, expenses, splits, payments);
+  const debts = simplifyDebts(bal);
+
+  app.innerHTML = `
+    <div class="row"><h2 style="margin:0">${esc(g.data.name)}</h2>
+      <button class="ghost" id="copy">Copy invite link</button></div>
+
+    <h2>Balances</h2>
+    ${members.map((m) => { const b = bal[m.id];
+      return `<div class="card row"><span>${esc(m.name)}</span>
+        <span class="${b > 0 ? "pos" : b < 0 ? "neg" : "muted"}">${b > 0 ? "gets back " + money(b) : b < 0 ? "owes " + money(-b) : "settled"}</span></div>`; }).join("")}
+
+    <h2>Settle up</h2>
+    ${debts.length ? debts.map((d, i) => `<div class="card row">
+        <span>${esc(name[d.from])} pays ${esc(name[d.to])} <b>${money(d.cents)}</b></span>
+        <button class="ghost" data-settle="${i}">Mark paid</button></div>`).join("")
+      : `<div class="muted">Everyone is settled up.</div>`}
+
+    <h2>Add expense</h2>
+    <div class="card">
+      <input id="desc" placeholder="What was it for?">
+      <div class="grid2">
+        <input id="amt" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Amount">
+        <select id="payer">${members.map((m) => `<option value="${m.id}">${esc(m.name)} paid</option>`).join("")}</select>
+      </div>
+      <div class="muted">Split equally between:</div>
+      ${members.map((m) => `<label class="chk"><input type="checkbox" class="who" value="${m.id}" checked>${esc(m.name)}</label>`).join("")}
+      <button id="addexp">Add expense</button>
+      <div id="err" class="err"></div>
+    </div>
+
+    <h2>Expenses</h2>
+    ${expenses.length ? expenses.map((e) => `<div class="card row">
+        <div><div>${esc(e.description)}</div>
+          <div class="muted">${esc(name[e.paid_by] || "?")} paid ${Number(e.amount).toFixed(2)} · ${new Date(e.created_at).toLocaleDateString()}</div></div>
+        <button class="ghost" data-del="${e.id}">Delete</button></div>`).join("")
+      : `<div class="muted">No expenses yet.</div>`}
+
+    <h2>Add member</h2>
+    <div class="card"><input id="newm" placeholder="Name"><button id="addm">Add</button></div>`;
+
+  document.getElementById("copy").onclick = async (ev) => {
+    const url = location.href;
+    try { await navigator.clipboard.writeText(url); ev.target.textContent = "Copied!"; }
+    catch { prompt("Copy this link:", url); }
+  };
+
+  document.getElementById("addexp").onclick = async (ev) => {
+    const description = desc.value.trim(), amount = parseFloat(amt.value);
+    const who = [...document.querySelectorAll(".who:checked")].map((c) => c.value);
+    if (!description || !(amount > 0) || !who.length) { err.textContent = "Add a description, amount and at least one person."; return; }
+    ev.target.disabled = true;
+    const { data: e, error } = await sb.from("expenses")
+      .insert({ group_id: id, description, amount, paid_by: payer.value }).select().single();
+    if (error) { err.textContent = error.message; ev.target.disabled = false; return; }
+    const rows = equalSplit(amount, who).map((s) => ({ ...s, expense_id: e.id }));
+    const { error: e2 } = await sb.from("splits").insert(rows);
+    if (e2) { await sb.from("expenses").delete().eq("id", e.id); err.textContent = e2.message; ev.target.disabled = false; return; }
+    route();
+  };
+
+  document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+    if (!confirm("Delete this expense?")) return;
+    const { error } = await sb.from("expenses").delete().eq("id", b.dataset.del);
+    if (error) return fail(error); route();
+  }));
+
+  document.querySelectorAll("[data-settle]").forEach((b) => (b.onclick = async () => {
+    const d = debts[+b.dataset.settle];
+    const { error } = await sb.from("payments").insert({ group_id: id, from_member: d.from, to_member: d.to, amount: d.cents / 100 });
+    if (error) return fail(error); route();
+  }));
+
+  document.getElementById("addm").onclick = async () => {
+    const n = newm.value.trim(); if (!n) return;
+    const { error } = await sb.from("members").insert({ group_id: id, name: n });
+    if (error) return fail(error); route();
+  };
+}
+
+window.addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>
