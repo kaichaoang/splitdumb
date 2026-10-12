@@ -105,8 +105,10 @@
   .formbtns button:first-child { flex:2; }
   button.icon { width:36px; height:36px; padding:0; display:inline-grid; place-items:center; border-radius:10px; flex:none; }
   svg.ico { width:18px; height:18px; display:block; }
-  .trip-head { display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; margin-bottom:2px; }
-  .trip-head h2.page { margin:6px 4px 6px 0; min-width:0; overflow-wrap:anywhere; }
+  /* header: title row, status tag (wraps below on a narrow phone) and the "N people" line are all 8px apart */
+  .trip-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:8px 0 0; }
+  .trip-head h2.page { margin:0 4px 0 0; min-width:0; overflow-wrap:anywhere; }
+  .trip-meta { margin-top:4px; }   /* text has ~4px of built-in leading, so this reads as the same 8px gap */
   button:disabled { opacity:.5; cursor:default; }
   label.chk { display:flex; align-items:center; gap:9px; padding:5px 0; } label.chk input { width:auto; margin:0; accent-color:var(--primary); }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
@@ -499,7 +501,7 @@ function drawGroup(ctx) {
       <button class="ghost icon" id="rename" title="Rename trip" aria-label="Rename trip">${svg("edit")}</button>
       <button class="ghost icon" id="copy" title="Copy link" aria-label="Copy link">${svg("link")}</button>
       ${tagHtml(kind)}</div>
-    <div class="muted">${members.length} people · you are ${esc(me.name)}</div>
+    <div class="muted trip-meta">${members.length} people · you are ${esc(me.name)}</div>
 
     <h2>Add expense</h2>
     <div class="card" id="addform">${formHtml(ctx, null)}</div>
