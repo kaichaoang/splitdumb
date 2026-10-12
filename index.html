@@ -3,25 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#5b5bd6">
+<meta name="theme-color" content="#1d4ed8">
 <title>SplitDumb</title>
 <style>
   :root {
-    --bg:#f3f4fb; --surface:#ffffff; --ink:#1b1d3a; --muted:#6a6f8f; --line:#e6e8f4;
-    --primary:#5b5bd6; --primary-ink:#ffffff; --primary-soft:#ecebff;
+    --bg:#f1f5fb; --surface:#ffffff; --ink:#14203a; --muted:#5f6b85; --line:#e1e8f4;
+    --primary:#2563eb; --primary-ink:#ffffff; --primary-soft:#edf3ff;
     --good:#0f9f6e; --good-soft:#def7ec; --bad:#e5484d; --bad-soft:#ffe8ea; --warn:#a96a00; --warn-soft:#fff1d1;
-    --g1:#5b5bd6; --g2:#8a5cf0; --shadow:0 1px 2px rgba(30,30,80,.05), 0 8px 22px rgba(30,30,80,.06);
+    --g1:#1d4ed8; --g2:#0277bd; --shadow:0 1px 2px rgba(20,45,100,.05), 0 8px 22px rgba(20,45,100,.06);
     /* chart colours: c0-c5 for people and categories, c7 grey for "no category" */
-    --c0:#5b5bd6; --c1:#e08a1e; --c2:#0f9f6e; --c3:#e5484d; --c4:#2b9fd9; --c5:#b94fa8; --c7:#8a8fb0;
+    --c0:#2563eb; --c1:#e08a1e; --c2:#0f9f6e; --c3:#e5484d; --c4:#8b5cf6; --c5:#b94fa8; --c7:#8a94b0;
     --danger:#c62828; --danger-ink:#ffffff;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg:#0f1022; --surface:#1a1c36; --ink:#eceefc; --muted:#9a9fc4; --line:#2b2e52;
-      --primary:#8484ff; --primary-ink:#10113a; --primary-soft:#26285c;
+      --bg:#0b1220; --surface:#121a2e; --ink:#e8eefc; --muted:#93a0bf; --line:#23304f;
+      --primary:#6aa4ff; --primary-ink:#0b1b3a; --primary-soft:#1b2d57;
       --good:#3dd6a1; --good-soft:#12362c; --bad:#ff7d82; --bad-soft:#3c1d26; --warn:#f6c453; --warn-soft:#3b3115;
-      --g1:#3f3fa8; --g2:#6a45c8; --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.25);
-      --c0:#8484ff; --c1:#f2a64a; --c2:#3dd6a1; --c3:#ff7d82; --c4:#5cb8ec; --c5:#d98ccb; --c7:#6b7099;
+      --g1:#1e40af; --g2:#0369a1; --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.25);
+      --c0:#6aa4ff; --c1:#f2a64a; --c2:#3dd6a1; --c3:#ff7d82; --c4:#a78bfa; --c5:#d98ccb; --c7:#6b7799;
       --danger:#ff7d82; --danger-ink:#3a0f12;
     }
   }
@@ -32,7 +32,7 @@
 
   /* ---- shell: top bar, side menu, content */
   #bar { position:sticky; top:0; z-index:20; height:56px; display:flex; align-items:center; gap:10px; padding:0 14px;
-         background:linear-gradient(135deg,var(--g1),var(--g2)); color:#fff; box-shadow:0 2px 10px rgba(40,30,120,.25); }
+         background:linear-gradient(135deg,var(--g1),var(--g2)); color:#fff; box-shadow:0 2px 10px rgba(20,50,140,.25); }
   #bar .logo { color:#fff; text-decoration:none; font-weight:800; font-size:20px; letter-spacing:-.02em; margin-right:auto; }
   #bar .logo span { opacity:.8; font-weight:600; }
   #burger { width:auto; margin:0; padding:6px 11px; font-size:19px; line-height:1; background:rgba(255,255,255,.18); color:#fff; border:0; border-radius:10px; cursor:pointer; }
@@ -40,7 +40,7 @@
   #side { position:fixed; top:56px; bottom:0; left:0; width:290px; max-width:86vw; z-index:15; padding:14px 12px 20px;
           background:var(--surface); border-right:1px solid var(--line); overflow-y:auto; transform:translateX(-102%); transition:transform .2s ease;
           display:flex; flex-direction:column; gap:2px; }
-  #scrim { display:none; position:fixed; inset:56px 0 0 0; background:rgba(8,8,30,.5); z-index:12; }
+  #scrim { display:none; position:fixed; inset:56px 0 0 0; background:rgba(6,12,32,.5); z-index:12; }
   body.menu-open #side { transform:none; box-shadow:0 0 40px rgba(0,0,0,.25); }
   body.menu-open #scrim { display:block; }
   #main { max-width:700px; margin:0 auto; padding:18px 16px 60px; }
@@ -151,7 +151,7 @@
   .filters button { grid-column:1/-1; justify-self:start; }
   #toasts { position:fixed; z-index:50; top:64px; left:50%; transform:translateX(-50%); width:min(440px,calc(100vw - 24px)); display:flex; flex-direction:column; gap:8px; pointer-events:none; }
   .toast { pointer-events:auto; display:flex; align-items:flex-start; gap:10px; padding:12px 12px 12px 14px; border-radius:14px; background:var(--surface); border:1px solid var(--line);
-           box-shadow:0 10px 30px rgba(20,20,60,.28); font-size:15px; animation:tin .18s ease-out; }
+           box-shadow:0 10px 30px rgba(15,30,70,.28); font-size:15px; animation:tin .18s ease-out; }
   .toast.err { border-left:5px solid var(--bad); } .toast.err .ti { color:var(--bad); }
   .toast.ok { border-left:5px solid var(--good); } .toast.ok .ti { color:var(--good); }
   .toast .tm { flex:1; word-break:break-word; }
