@@ -461,6 +461,7 @@ function drawGroup(ctx) {
         <label>Currency<select id="f_cur"><option value="">All</option>${[...new Set(expenses.map(curOf))].sort().map((c) => `<option ${filt.cur === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
         <button type="button" class="ghost" id="f_clear">Clear filters</button>
       </div>` : ""}
+      ${expenses.length ? `<div style="padding:0 0 10px"><button type="button" class="ghost" id="f_csv">⬇ Export CSV <span class="muted" id="csvn"></span></button></div>` : ""}
       <div id="explist"></div>
     </details>
 
@@ -492,10 +493,13 @@ function drawGroup(ctx) {
 
   // ---- expenses list (filters redraw only the list, so typing/focus isn't lost)
   const localDay = (iso) => { const t = new Date(iso); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; };
+  let shown = expenses;
   function paintExp() {
     const list = expenses.filter((e) =>
       (!filt.from || localDay(e.created_at) >= filt.from) && (!filt.to || localDay(e.created_at) <= filt.to) &&
       (!filt.by || e.added_by === filt.by) && (!filt.paid || e.paid_by === filt.paid) && (!filt.cur || curOf(e) === filt.cur));
+    shown = list;
+    if ($("csvn")) $("csvn").textContent = list.length === expenses.length ? "" : `(${list.length} filtered)`;
     $("expcount").textContent = list.length === expenses.length ? expenses.length : `${list.length} of ${expenses.length}`;
     $("explist").innerHTML = list.length ? list.map((e) => {
       const sp = splits.filter((s) => s.expense_id === e.id);
@@ -522,6 +526,22 @@ function drawGroup(ctx) {
       ($(el).onchange = $(el).oninput = () => { filt[k] = $(el).value; paintExp(); }));
     $("f_clear").onclick = () => { Object.assign(filt, { from: "", to: "", by: "", paid: "", cur: "" }); ["f_from", "f_to", "f_by", "f_paid", "f_cur"].forEach((x) => ($(x).value = "")); paintExp(); };
   }
+  if (expenses.length) $("f_csv").onclick = () => {
+    const cell = (v) => { let t = v == null ? "" : String(v); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;   // stop spreadsheet formula injection
+      return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+    const head = ["Date", "Description", "Amount", "Currency", "Paid by", "Added by", "Split", ...members.map((m) => `Share: ${m.name}`)];
+    const rows = [...shown].sort((a, b) => a.created_at.localeCompare(b.created_at)).map((e) => {
+      const sp = splits.filter((s) => s.expense_id === e.id);
+      return [localDay(e.created_at), e.description, Number(e.amount).toFixed(2), curOf(e), name[e.paid_by] || "", name[e.added_by] || "", e.split_type || "equal",
+        ...members.map((m) => { const s = sp.find((x) => x.member_id === m.id); return s ? Number(s.share).toFixed(2) : ""; })];
+    });
+    const csv = "\ufeff" + [head, ...rows].map((r) => r.map(cell).join(",")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = `${group.name.replace(/[^\w.-]+/g, "_") || "trip"}-expenses.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
   paintExp();
   document.querySelectorAll("[data-settle]").forEach((b) => (b.onclick = async () => {
     const d = debts[+b.dataset.settle];
