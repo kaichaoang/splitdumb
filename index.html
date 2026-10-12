@@ -11,6 +11,8 @@
     --primary:#5b5bd6; --primary-ink:#ffffff; --primary-soft:#ecebff;
     --good:#0f9f6e; --good-soft:#def7ec; --bad:#e5484d; --bad-soft:#ffe8ea; --warn:#a96a00; --warn-soft:#fff1d1;
     --g1:#5b5bd6; --g2:#8a5cf0; --shadow:0 1px 2px rgba(30,30,80,.05), 0 8px 22px rgba(30,30,80,.06);
+    /* chart colours: c0-c5 for people and categories, c7 grey for "no category" */
+    --c0:#5b5bd6; --c1:#e08a1e; --c2:#0f9f6e; --c3:#e5484d; --c4:#2b9fd9; --c5:#b94fa8; --c7:#8a8fb0;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -18,6 +20,7 @@
       --primary:#8484ff; --primary-ink:#10113a; --primary-soft:#26285c;
       --good:#3dd6a1; --good-soft:#12362c; --bad:#ff7d82; --bad-soft:#3c1d26; --warn:#f6c453; --warn-soft:#3b3115;
       --g1:#3f3fa8; --g2:#6a45c8; --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.25);
+      --c0:#8484ff; --c1:#f2a64a; --c2:#3dd6a1; --c3:#ff7d82; --c4:#5cb8ec; --c5:#d98ccb; --c7:#6b7099;
     }
   }
   * { box-sizing:border-box; }
@@ -101,12 +104,15 @@
   .seg { display:flex; gap:6px; margin:6px 0; background:var(--bg); padding:4px; border-radius:14px; }
   .segbtn { background:transparent; color:var(--muted); border:0; flex:1; width:auto; font-weight:600; margin:0; }
   .segbtn.on { background:var(--surface); color:var(--primary); box-shadow:var(--shadow); }
-  .srow { display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:8px; padding:2px 0; }
+  .srow { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:8px; padding:2px 0; }
   .srow .pctwrap { display:none; align-items:center; gap:4px; }
-  .srow .pct { width:90px; margin:0; text-align:right; }
-  .prev { min-width:84px; text-align:right; font-variant-numeric:tabular-nums; }
-  #splitbox.mode-percent .pctwrap { display:flex; } #splitbox.mode-percent .inc { display:none; }
-  #splitbox:not(.mode-percent) #pcttotal { display:none; }
+  .srow .pct { width:72px; margin:0; text-align:right; }
+  .srow .chk, .srow .chk .person { min-width:0; }
+  .prev { min-width:60px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; font-size:13.5px; }
+  .splitbox.mode-percent .pctwrap { display:flex; } .splitbox.mode-percent .inc { display:none; }
+  .splitbox:not(.mode-percent) [data-f="pcttotal"] { display:none; }
+  .card.exp-edit { border-color:var(--primary); }
+  .card.exp-edit > h2 { margin:0 0 8px; }
   details.sec { margin:14px 0; background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow); padding:0 14px; }
   details.sec > summary { cursor:pointer; list-style:none; padding:14px 0; font-weight:700; display:flex; justify-content:space-between; align-items:center; }
   details.sec > summary::-webkit-details-marker { display:none; }
@@ -139,6 +145,11 @@
   .stat .sval { white-space:nowrap; font-variant-numeric:tabular-nums; }
   .bar { height:8px; border-radius:999px; background:var(--bg); margin-top:6px; overflow:hidden; }
   .bar > i { display:block; height:100%; min-width:2px; border-radius:999px; background:linear-gradient(90deg,var(--g1),var(--g2)); }
+  .statchart { display:flex; flex-wrap:wrap; gap:14px 22px; align-items:center; justify-content:center; }
+  .statrows { flex:1 1 230px; min-width:0; }
+  .donut { width:150px; height:150px; flex:none; }
+  .donut .dtop { font:700 13px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; fill:var(--ink); }
+  .donut .dbot { font:600 9px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; fill:var(--muted); letter-spacing:.08em; }
   .catbadge.sm { width:28px; height:28px; border-radius:8px; }
   .catbadge.sm svg.ico { width:16px; height:16px; }
   .expmain { display:flex; gap:10px; min-width:0; flex:1; }
@@ -201,12 +212,31 @@ const catKey = (c) => (c && CATS.some(([k]) => k === c) ? c : "");
 const catLabel = (c) => (catKey(c) ? CATS.find(([k]) => k === c)[1] : "No category");
 const catIcon = (c) => svg(catKey(c) || "none");
 // one labelled bar: icon, name, amount and % of the total (the numbers carry the meaning; the bar is decoration)
-const statRow = (icon, label, cents, total) => {
+const statRow = (icon, label, cents, total, color) => {
   const pct = total ? (cents / total) * 100 : 0;
   return `<div class="stat"><div class="row"><span class="person">${icon}<span class="sname">${esc(label)}</span></span>
     <span class="sval"><b>${money(cents)}</b> <span class="muted">${pct.toFixed(1)}%</span></span></div>
-    <div class="bar" aria-hidden="true"><i style="width:${pct.toFixed(1)}%"></i></div></div>`;
+    <div class="bar" aria-hidden="true"><i style="width:${pct.toFixed(1)}%${color ? ";background:" + color : ""}"></i></div></div>`;
 };
+// Donut: one arc per part (cents + colour), total in the middle. Drawn as stroked circles, no library.
+const donut = (parts, total, cur, aria) => {
+  const R = 44, C = 2 * Math.PI * R, gap = parts.length > 1 ? 1.5 : 0;
+  let acc = 0;
+  const arcs = parts.map((p) => {
+    const len = (p.cents / total) * C;
+    const s = `<circle cx="60" cy="60" r="${R}" fill="none" stroke-width="16" style="stroke:${p.color}" stroke-dasharray="${Math.max(len - gap, 0.4).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}" transform="rotate(-90 60 60)"/>`;
+    acc += len;
+    return s;
+  }).join("");
+  return `<svg class="donut" viewBox="0 0 120 120" role="img" aria-label="${esc(aria)}"><circle cx="60" cy="60" r="${R}" fill="none" stroke-width="16" style="stroke:var(--bg)"/>${arcs}
+    <text x="60" y="59" text-anchor="middle" class="dtop">${esc(money(total))}</text><text x="60" y="73" text-anchor="middle" class="dbot">${esc(cur)}</text></svg>`;
+};
+// A statistics card: donut (only when there are 2+ slices to compare) next to labelled bars that act as its legend.
+const statCard = (title, parts, total, cur, note) => `<div class="card"><div class="stathead">${title}</div>
+  <div class="statchart">${parts.length > 1 ? donut(parts, total, cur, `${title}: ` + parts.map((p) => `${p.label} ${((p.cents / total) * 100).toFixed(1)}%`).join(", ")) : ""}
+    <div class="statrows">${parts.map((p) => statRow(p.icon, p.label, p.cents, total, p.color)).join("")}</div></div>
+  ${note ? `<div class="muted" style="margin-top:10px">${note}</div>` : ""}</div>`;
+const CATCOLOR = { accommodation: 0, food: 1, utilities: 2, transport: 4, gift: 5, "": 7 };
 const TAGS = { new: "New", settled: "Settled", open: "Unsettled" };
 const tagHtml = (k) => `<span class="tag ${k}">${TAGS[k]}</span>`;
 const tripKind = (t) => (!t.expense_count ? "new" : t.settled ? "settled" : "open");
@@ -414,8 +444,7 @@ function renderAccount() {
 // ------------------------------------------------------------------ a trip
 const openSecs = new Set();   // which collapsed sections the user has opened (survives redraws)
 const filt = { gid: null, from: "", to: "", by: "", paid: "", cur: "", cat: "" };   // expense list filters
-let editingId = null;   // expense being edited, if any
-let splitMode = "equal";
+let editingId = null;   // expense being edited in place in the list, if any
 
 async function renderGroup(id) {
   editingId = null;
@@ -448,17 +477,6 @@ function drawGroup(ctx) {
   const catSpend = spendingByCategory(expenses, catKey);
   const kind = !expenses.length ? "new" : debts.length ? "open" : "settled";
 
-  // form defaults (new expense, or the one being edited)
-  const editing = editingId ? expenses.find((e) => e.id === editingId) || null : null;
-  if (!editing) editingId = null;
-  const editSplits = editing ? splits.filter((s) => s.expense_id === editing.id) : [];
-  splitMode = editing && editing.split_type === "percent" ? "percent" : "equal";
-  const curCat = editing ? catKey(editing.category) : "";
-  const checked = new Set(editing ? editSplits.map((s) => s.member_id) : members.map((m) => m.id));
-  const pct = {};
-  if (editing && editing.split_type === "percent") editSplits.forEach((s) => (pct[s.member_id] = Number(s.percent)));
-  else equalPercents([...checked]).forEach((e) => (pct[e.id] = e.percent));
-
   app.innerHTML = `
     <a class="back" href="#/">← All trips</a>
     <div class="row" style="margin-bottom:2px">
@@ -466,37 +484,8 @@ function drawGroup(ctx) {
       <button class="ghost" id="copy">Copy link</button></div>
     <div class="muted">${members.length} people · you are ${esc(me.name)}</div>
 
-    <h2>${editing ? "Edit expense" : "Add expense"}</h2>
-    <div class="card" id="expform">
-      <input id="desc" placeholder="What was it for?" value="${editing ? esc(editing.description) : ""}">
-      <div class="grid2">
-        <input id="amt" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Amount" value="${editing ? Number(editing.amount).toFixed(2) : ""}">
-        ${(() => { const cur = editing ? curOf(editing) : getLastCurrency(), known = CURRENCIES.some(([c]) => c === cur);
-          return `<select id="ccy" aria-label="Currency">${(known ? CURRENCIES : [[cur, ""], ...CURRENCIES]).map(([c, n]) => `<option value="${c}" ${c === cur ? "selected" : ""}>${c}${n ? " · " + n : ""}</option>`).join("")}<option value="OTHER">Other…</option></select>`; })()}
-        <input id="ccyother" class="upper" maxlength="3" placeholder="3-letter code" style="display:none;grid-column:1/-1">
-      </div>
-      <div class="muted" style="margin-top:6px">Category</div>
-      <div class="cats" role="radiogroup" aria-label="Category">${CATS.map(([k, label]) =>
-        `<label class="catchip"><input type="radio" name="cat" value="${k}" ${k === curCat ? "checked" : ""}><span>${catIcon(k)}${label}</span></label>`).join("")}</div>
-      <div class="muted" style="margin-top:6px">Paid by</div>
-      <select id="payer">${members.map((m) => `<option value="${m.id}" ${m.id === (editing ? editing.paid_by : meId) ? "selected" : ""}>${esc(m.name)}${youTag(m)}</option>`).join("")}</select>
-      <div class="muted" style="margin-top:6px">Split</div>
-      <div class="seg">
-        <button type="button" class="segbtn ${splitMode === "equal" ? "on" : ""}" data-mode="equal">Equally</button>
-        <button type="button" class="segbtn ${splitMode === "percent" ? "on" : ""}" data-mode="percent">By %</button>
-      </div>
-      <div id="splitbox" class="${splitMode === "percent" ? "mode-percent" : ""}">
-        ${members.map((m) => `<div class="srow" data-id="${m.id}">
-          <label class="chk"><input type="checkbox" class="inc" value="${m.id}" ${checked.has(m.id) ? "checked" : ""}><span class="person">${av(m.name, "sm")}${esc(m.name)}${youTag(m)}</span></label>
-          <span class="pctwrap"><input class="pct" type="number" step="0.001" min="0" max="100" inputmode="decimal" value="${pct[m.id] ?? 0}"><span class="muted">%</span></span>
-          <span class="prev muted"></span></div>`).join("")}
-        <div id="pcttotal" class="muted"></div>
-      </div>
-      <div class="btns" style="margin-top:8px">
-        <button id="save">${editing ? "Save changes" : "Add expense"}</button>
-        ${editing ? `<button id="cancel" class="ghost" type="button">Cancel</button>` : ""}
-      </div>
-    </div>
+    <h2>Add expense</h2>
+    <div class="card" id="addform">${formHtml(ctx, null)}</div>
 
     <details class="sec" data-sec="bal" ${openSecs.has("bal") ? "open" : ""}><summary>Balances</summary>
     ${curs.length ? curs.map((c) => `<div class="cur">${esc(c)}</div>` + members.map((m) => { const b = byCur[c][m.id];
@@ -526,14 +515,13 @@ function drawGroup(ctx) {
 
     <details class="sec" data-sec="stats" ${openSecs.has("stats") ? "open" : ""}><summary>Statistics</summary>
     ${curs.length ? Object.entries(spend).map(([c, s]) => {
-      const people = members.map((m) => ({ m, v: s.byMember[m.id].spent })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
-      const cats = Object.entries(catSpend[c].byCat).sort((a, b) => b[1] - a[1]);
-      return `<div class="cur">${esc(c)} · trip total ${money(s.total)}</div>
-        <div class="card"><div class="stathead">Who spent what</div>
-          ${people.map((x) => statRow(av(x.m.name, "sm"), x.m.name + youTag(x.m), x.v, s.total)).join("")}
-          <div class="muted" style="margin-top:10px">Each person's share of the expenses, as a portion of the trip total.</div></div>
-        <div class="card"><div class="stathead">By category</div>
-          ${cats.map(([k, v]) => statRow(`<span class="catbadge sm ${k ? "" : "none"}">${catIcon(k)}</span>`, catLabel(k), v, catSpend[c].total)).join("")}</div>`; }).join("")
+      const people = members.map((m) => ({ m, v: s.byMember[m.id].spent })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v)
+        .map((x, i) => ({ icon: av(x.m.name, "sm"), label: x.m.name + youTag(x.m), cents: x.v, color: `var(--c${i % 6})` }));
+      const cats = Object.entries(catSpend[c].byCat).sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => ({ icon: `<span class="catbadge sm ${k ? "" : "none"}">${catIcon(k)}</span>`, label: catLabel(k), cents: v, color: `var(--c${CATCOLOR[k]})` }));
+      return `<div class="cur">${esc(c)} · trip total ${money(s.total)}</div>`
+        + statCard("Who spent what", people, s.total, c, "Each person's share of the expenses, as a portion of the trip total.")
+        + statCard("By category", cats, catSpend[c].total, c, ""); }).join("")
       : `<div class="muted">No expenses yet.</div>`}
 
     </details>
@@ -575,7 +563,7 @@ function drawGroup(ctx) {
     if (n === null || !n.trim() || n.trim() === group.name) return;
     try { await call("rename_group", { p_group: id, p_name: n.trim() }); route(); } catch (e) { showErr($("perr"), e); }
   };
-  wireForm(ctx, me, editing);
+  wireForm($("addform"), ctx, null);
 
   // ---- expenses list (filters redraw only the list, so typing/focus isn't lost)
   const localDay = (iso) => { const t = new Date(iso); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; };
@@ -589,6 +577,7 @@ function drawGroup(ctx) {
     if ($("csvn")) $("csvn").textContent = list.length === expenses.length ? "" : `(${list.length} filtered)`;
     $("expcount").textContent = list.length === expenses.length ? expenses.length : `${list.length} of ${expenses.length}`;
     $("explist").innerHTML = list.length ? list.map((e) => {
+      if (e.id === editingId) return `<div class="card exp-edit" data-editcard="${e.id}"><h2>Edit expense</h2>${formHtml(ctx, e)}</div>`;
       const sp = splits.filter((s) => s.expense_id === e.id);
       const mine = sp.find((s) => s.member_id === meId);
       const line2 = (mine ? `Your share: ${esc(curOf(e))} ${Number(mine.share).toFixed(2)}` : "You're not in this split")
@@ -600,9 +589,11 @@ function drawGroup(ctx) {
           <div class="muted">${line2}</div></div></div>
         <div class="btns"><button class="ghost icon" data-edit="${e.id}" title="Edit" aria-label="Edit expense">${svg("edit")}</button><button class="ghost icon danger" data-del="${e.id}" title="Delete" aria-label="Delete expense">${svg("trash")}</button></div></div>`; }).join("")
       : `<div class="muted" style="padding:6px 0 12px">${expenses.length ? "No expenses match these filters." : "No expenses yet."}</div>`;
+    const card = document.querySelector("[data-editcard]");
+    if (card) wireForm(card, ctx, expenses.find((x) => x.id === editingId), () => { editingId = null; paintExp(); });
     document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => {
-      editingId = b.dataset.edit; drawGroup(ctx);
-      const f = $("expform"); if (f && f.scrollIntoView) f.scrollIntoView({ behavior: "smooth", block: "center" });
+      editingId = b.dataset.edit; paintExp();     // only the list redraws, so a half-typed new expense up top is kept
+      const c = document.querySelector("[data-editcard]"); if (c && c.scrollIntoView) c.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }));
     document.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
       if (!confirm("Delete this expense?")) return;
@@ -653,20 +644,66 @@ function drawGroup(ctx) {
   };
 }
 
-// The add / edit expense form
-function wireForm(ctx, me, editing) {
+// The add / edit expense form. It is used once at the top (add) and again in place inside an expense card (edit),
+// so every field is found by data-f inside its own root element instead of by a page-wide id.
+function formHtml(ctx, editing) {
+  const { members, meId, splits } = ctx;
+  const youTag = (m) => (m.id === meId ? " (you)" : "");
+  const uid = editing ? editing.id : "new";
+  const editSplits = editing ? splits.filter((s) => s.expense_id === editing.id) : [];
+  const mode = editing && editing.split_type === "percent" ? "percent" : "equal";
+  const curCat = editing ? catKey(editing.category) : "";
+  const checked = new Set(editing ? editSplits.map((s) => s.member_id) : members.map((m) => m.id));
+  const pct = {};
+  if (mode === "percent") editSplits.forEach((s) => (pct[s.member_id] = Number(s.percent)));
+  else equalPercents([...checked]).forEach((e) => (pct[e.id] = e.percent));
+  const cur = editing ? curOf(editing) : getLastCurrency(), known = CURRENCIES.some(([c]) => c === cur);
+  return `
+      <input data-f="desc" placeholder="What was it for?" value="${editing ? esc(editing.description) : ""}">
+      <div class="grid2">
+        <input data-f="amt" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Amount" value="${editing ? Number(editing.amount).toFixed(2) : ""}">
+        <select data-f="ccy" aria-label="Currency">${(known ? CURRENCIES : [[cur, ""], ...CURRENCIES]).map(([c, n]) => `<option value="${c}" ${c === cur ? "selected" : ""}>${c}${n ? " · " + n : ""}</option>`).join("")}<option value="OTHER">Other…</option></select>
+        <input data-f="ccyother" class="upper" maxlength="3" placeholder="3-letter code" style="display:none;grid-column:1/-1">
+      </div>
+      <div class="muted" style="margin-top:6px">Category</div>
+      <div class="cats" role="radiogroup" aria-label="Category">${CATS.map(([k, label]) =>
+        `<label class="catchip"><input type="radio" name="cat-${uid}" value="${k}" ${k === curCat ? "checked" : ""}><span>${catIcon(k)}${label}</span></label>`).join("")}</div>
+      <div class="muted" style="margin-top:6px">Paid by</div>
+      <select data-f="payer">${members.map((m) => `<option value="${m.id}" ${m.id === (editing ? editing.paid_by : meId) ? "selected" : ""}>${esc(m.name)}${youTag(m)}</option>`).join("")}</select>
+      <div class="muted" style="margin-top:6px">Split</div>
+      <div class="seg">
+        <button type="button" class="segbtn ${mode === "equal" ? "on" : ""}" data-mode="equal">Equally</button>
+        <button type="button" class="segbtn ${mode === "percent" ? "on" : ""}" data-mode="percent">By %</button>
+      </div>
+      <div class="splitbox ${mode === "percent" ? "mode-percent" : ""}" data-f="splitbox">
+        ${members.map((m) => `<div class="srow" data-id="${m.id}">
+          <label class="chk"><input type="checkbox" class="inc" value="${m.id}" ${checked.has(m.id) ? "checked" : ""}><span class="person">${av(m.name, "sm")}${esc(m.name)}${youTag(m)}</span></label>
+          <span class="pctwrap"><input class="pct" type="number" step="0.001" min="0" max="100" inputmode="decimal" value="${pct[m.id] ?? 0}"><span class="muted">%</span></span>
+          <span class="prev muted"></span></div>`).join("")}
+        <div data-f="pcttotal" class="muted"></div>
+      </div>
+      <div class="btns" style="margin-top:8px">
+        <button type="button" data-f="save">${editing ? "Save changes" : "Add expense"}</button>
+        ${editing ? `<button data-f="cancel" class="ghost" type="button">Cancel</button>` : ""}
+      </div>`;
+}
+
+function wireForm(root, ctx, editing, onCancel) {
   const { id } = ctx;
-  const getCcy = () => ($("ccy").value === "OTHER" ? $("ccyother").value : $("ccy").value).trim().toUpperCase();
-  const rows = () => [...document.querySelectorAll(".srow")];
+  const f = (n) => root.querySelector(`[data-f="${n}"]`);
+  const all = (sel) => [...root.querySelectorAll(sel)];
+  const rows = () => all(".srow");
+  let mode = editing && editing.split_type === "percent" ? "percent" : "equal";
+  const getCcy = () => (f("ccy").value === "OTHER" ? f("ccyother").value : f("ccy").value).trim().toUpperCase();
 
   function updatePreview() {
     rows().forEach((r) => (r.querySelector(".prev").textContent = ""));
-    const amount = parseFloat($("amt").value), cur = getCcy();
+    const amount = parseFloat(f("amt").value), cur = getCcy();
     const show = (memberId, share) => { const r = rows().find((x) => x.dataset.id === memberId); if (r) r.querySelector(".prev").textContent = `${cur} ${share.toFixed(2)}`; };
-    if (splitMode === "percent") {
+    if (mode === "percent") {
       const entries = rows().map((r) => ({ id: r.dataset.id, percent: parseFloat(r.querySelector(".pct").value) || 0 }));
       const tot = entries.reduce((t, e) => t + Math.round(e.percent * 1000), 0) / 1000;
-      const el = $("pcttotal");
+      const el = f("pcttotal");
       el.textContent = `Total ${tot}%` + (tot === 100 ? "" : " (must be 100%)");
       el.className = tot === 100 ? "muted" : "err";
       if (tot === 100 && amount > 0) percentSplit(amount, entries).forEach((s) => show(s.member_id, s.share));
@@ -676,35 +713,34 @@ function wireForm(ctx, me, editing) {
     }
   }
 
-  document.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => {
+  all("[data-mode]").forEach((b) => (b.onclick = () => {
     const next = b.dataset.mode;
-    if (next === splitMode) return;
+    if (next === mode) return;
     if (next === "percent") {   // start from an even split between whoever is ticked
       const ids = rows().filter((r) => r.querySelector(".inc").checked).map((r) => r.dataset.id);
       const even = Object.fromEntries(equalPercents(ids).map((e) => [e.id, e.percent]));
       rows().forEach((r) => (r.querySelector(".pct").value = even[r.dataset.id] ?? 0));
     }
-    splitMode = next;
-    $("splitbox").classList.toggle("mode-percent", next === "percent");
-    document.querySelectorAll("[data-mode]").forEach((x) => x.classList.toggle("on", x.dataset.mode === next));
+    mode = next;
+    f("splitbox").classList.toggle("mode-percent", next === "percent");
+    all("[data-mode]").forEach((x) => x.classList.toggle("on", x.dataset.mode === next));
     updatePreview();
   }));
-  ["amt", "ccyother"].forEach((k) => ($(k).oninput = updatePreview));
-  $("ccy").onchange = () => { $("ccyother").style.display = $("ccy").value === "OTHER" ? "" : "none"; if ($("ccy").value === "OTHER") $("ccyother").focus(); updatePreview(); };
+  ["amt", "ccyother"].forEach((k) => (f(k).oninput = updatePreview));
+  f("ccy").onchange = () => { f("ccyother").style.display = f("ccy").value === "OTHER" ? "" : "none"; if (f("ccy").value === "OTHER") f("ccyother").focus(); updatePreview(); };
   rows().forEach((r) => { r.querySelector(".inc").onchange = updatePreview; r.querySelector(".pct").oninput = updatePreview; });
 
-  if (editing) $("cancel").onclick = () => { editingId = null; drawGroup(ctx); };
+  if (editing) f("cancel").onclick = onCancel;
 
-  $("save").onclick = async (ev) => {
-    const err = $("err");
-    const description = $("desc").value.trim(), amount = parseFloat($("amt").value);
+  f("save").onclick = async (ev) => {
+    const description = f("desc").value.trim(), amount = parseFloat(f("amt").value);
     const currency = getCcy();
     if (!description) { toast("What was it for?"); return; }
     if (!(amount > 0)) { toast("Enter an amount more than 0."); return; }
     if (!/^[A-Z]{3}$/.test(currency)) { toast("Currency must be a 3-letter code, e.g. SGD or MYR."); return; }
     let split;
     try {
-      if (splitMode === "equal") {
+      if (mode === "equal") {
         const ids = rows().filter((r) => r.querySelector(".inc").checked).map((r) => r.dataset.id);
         if (!ids.length) throw new Error("Pick at least one person to split with.");
         split = equalSplit(amount, ids);
@@ -712,16 +748,16 @@ function wireForm(ctx, me, editing) {
         split = percentSplit(amount, rows().map((r) => ({ id: r.dataset.id, percent: parseFloat(r.querySelector(".pct").value) || 0 })));
       }
     } catch (e) { toast(e.message); return; }
-    const picked = document.querySelector('input[name="cat"]:checked');
+    const picked = root.querySelector('input[type="radio"]:checked');
     ev.target.disabled = true;
     try {
       await call("save_expense", {
         p_id: editing ? editing.id : null, p_group: id, p_description: description, p_amount: amount,
-        p_currency: currency, p_paid_by: $("payer").value, p_split_type: splitMode, p_splits: split,
+        p_currency: currency, p_paid_by: f("payer").value, p_split_type: mode, p_splits: split,
         p_category: picked ? picked.value : "" });
       setLastCurrency(currency);
       route();
-    } catch (e) { showErr(err, e); ev.target.disabled = false; }
+    } catch (e) { showErr(null, e); ev.target.disabled = false; }
   };
 
   updatePreview();
