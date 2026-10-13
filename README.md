@@ -10,8 +10,8 @@ A minimal Splitwise-style expense splitter. Static site (HTML/JS) on GitHub Page
 - **Categories:** tag an expense as Transport, Food, Utilities, Accommodation, Gift or Entertainment, or leave it as None. The icon shows next to the expense, and the CSV export has a Category column.
 - **Split** equally between chosen people, or **by percentage** (default 50/50, must total 100%).
 - **Multi-currency:** each expense has its own currency. Balances, settle-up and spending are per currency, no conversion.
-- **Statistics:** per currency, each person's portion of the trip's spending and a breakdown by category, as percentages, shown as a donut chart plus labelled bars.
-- **Combined statistics:** when a trip uses 2+ currencies, an extra "All currencies" view converts everything into one currency (default SGD, changeable) so you can see the overall spending split. It uses live rates from a free public API (open.er-api.com), cached for 12 hours, with rough built-in estimates as a fallback. It is an estimate only; balances and settle-up never mix currencies.
+- **Statistics:** one chart at a time, switch between **By person** and **By category**, for **all currencies combined** (converted into one currency you pick, default SGD) or any single currency.
+- **Exchange rates** (combined view only): live rates from a free public API (open.er-api.com), cached for 12 hours, with rough built-in estimates as a fallback. It is an estimate; balances and settle-up never mix currencies.
 - **Spending per person:** your share of the expenses vs what you paid up front (pay 30 for a coffee in a 2-person group: your spending is 15, the other person owes you 15).
 
 ## Setup
