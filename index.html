@@ -81,6 +81,10 @@
   .row { display:flex; justify-content:space-between; align-items:center; gap:10px; }
   .person { display:flex; align-items:center; gap:10px; min-width:0; }
   .muted { color:var(--muted); font-size:14px; }
+  .loading { display:grid; place-items:center; padding:28vh 0; }
+  .spinner { width:38px; height:38px; border-radius:50%; border:3.5px solid var(--line); border-top-color:var(--accent); animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration:2.4s; } }
   .viewbar { display:flex; gap:8px; margin:8px 0 10px; }
   .viewbar select { margin:0; height:40px; padding:0 10px; font-size:15px; width:auto; flex:1; min-width:0; }
   .cur { color:var(--accent); font-size:12.5px; font-weight:800; letter-spacing:.08em; margin:16px 0 6px; }
@@ -233,7 +237,7 @@
 <div id="toasts" aria-live="polite"></div>
 <div id="scrim"></div>
 <aside id="side"></aside>
-<main id="main"><div id="app">Loading…</div></main>
+<main id="main"><div id="app"><div class="loading" role="status" aria-label="Loading"><span class="spinner"></span></div></div></main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
