@@ -168,17 +168,24 @@
   /* ---- statistics bars */
   .stathead { font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:10px; }
   .statrows > * + * { margin-top:12px; }
-  .statrowbtn { display:block; width:100%; background:transparent; color:inherit; font-weight:inherit; text-align:left; padding:6px 8px; margin:-6px -8px; border:0; border-radius:10px; cursor:pointer; box-sizing:content-box; }
-  .statrowbtn:hover { background:var(--primary-soft); filter:none; }
-  .statrowbtn .sname::after { content:"▾"; margin-left:6px; color:var(--muted); font-size:12px; }
-  .statrowbtn[aria-expanded=true] .sname::after { content:"▴"; }
-  .statsub { margin:8px 0 2px 2px; padding-left:8px; border-left:2px solid var(--line); }
-  .statsub .sname { font-size:13.5px; }
-  .statsub .sval { font-size:13.5px; }
+  .card.statcard { padding:12px; }
+  .statrows > .statgrp { border:1px solid var(--line); border-radius:14px; background:var(--bg); }
+  .statrows > .statgrp.open { border-color:var(--accent); }
+  .statrows > .statgrp + .statgrp { margin-top:10px; }
+  .statrowbtn { display:flex; align-items:center; gap:8px; width:100%; padding:10px; margin:0; background:transparent; color:inherit; font-weight:inherit; text-align:left; border:0; border-radius:14px; cursor:pointer; }
+  .statrowbtn:hover, .statrowbtn:active { background:var(--primary-soft); filter:none; }
+  .statrowbtn:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+  .statrowbtn > .stat { flex:1; min-width:0; }
+  .statrowbtn .bar, .statsub .bar { background:var(--line); }
+  .chev { flex:none; width:24px; height:24px; border-radius:50%; display:grid; place-items:center; background:var(--surface); color:var(--accent); box-shadow:0 0 0 1px var(--line); }
+  .chev svg { width:16px; height:16px; transition:transform .15s; }
+  .statrowbtn[aria-expanded=true] .chev svg { transform:rotate(180deg); }
+  .statsub { padding:10px 8px; border-top:1px solid var(--line); }
+  .statsub .stat + .stat { margin-top:10px; }
+  .statsub .sname, .statsub .sval { font-size:13.5px; }
+  .statsub .row, .statsub .person { gap:5px; }
   .statsub .catbadge.sm { width:24px; height:24px; border-radius:8px; }
   .statsub .catbadge.sm svg { width:15px; height:15px; }
-  .statsub .row, .statsub .person { gap:5px; }
-  .statsub .stat + .stat { margin-top:10px; }
   .stat .row, .stat .person { gap:8px; }
   .stat .sname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; }
   .stat .sval { white-space:nowrap; font-variant-numeric:tabular-nums; }
@@ -239,6 +246,7 @@ const av = (name, cls = "", pic = "") => {
 };
 // Icons: 24x24 outline paths (Lucide, ISC licence), drawn inline so there is nothing extra to load.
 const ICONS = {
+  chevron: `<path d="m6 9 6 6 6-6"/>`,
   edit: `<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>`,
   trash: `<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>`,
   link: `<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>`,
@@ -278,10 +286,10 @@ const donut = (parts, total, cur, aria) => {
     <text x="60" y="59" text-anchor="middle" class="dtop">${esc(money(total))}</text><text x="60" y="73" text-anchor="middle" class="dbot">${esc(cur)}</text></svg>`;
 };
 // A statistics card: donut (only when there are 2+ slices to compare) next to labelled bars that act as its legend.
-const statCard = (parts, total, cur, aria) => `<div class="card"><div class="statchart">
+const statCard = (parts, total, cur, aria) => `<div class="card statcard"><div class="statchart">
     ${parts.length > 1 ? donut(parts, total, cur, aria + ": " + parts.map((p) => `${p.label} ${((p.cents / total) * 100).toFixed(1)}%`).join(", ")) : ""}
     <div class="statrows">${parts.map((p) => p.id === undefined ? statRow(p.icon, p.label, p.cents, total, p.color)
-      : `<div><button type="button" class="statrowbtn" data-person="${esc(p.id)}" aria-expanded="${p.open}">${statRow(p.icon, p.label, p.cents, total, p.color)}</button>${p.open ? `<div class="statsub">${p.detail}</div>` : ""}</div>`).join("")}</div></div></div>`;
+      : `<div class="statgrp ${p.open ? "open" : ""}"><button type="button" class="statrowbtn" data-person="${esc(p.id)}" aria-expanded="${p.open}">${statRow(p.icon, p.label, p.cents, total, p.color)}<span class="chev">${svg("chevron")}</span></button>${p.open ? `<div class="statsub">${p.detail}</div>` : ""}</div>`).join("")}</div></div></div>`;
 // which statistics tab / currency view is showing (survives redraws)
 const statsUI = { tab: "person", view: "all", open: new Set() };   // open = people whose category breakdown is expanded
 // ---- exchange rates, only for the combined statistics (never for balances or settle-up).
