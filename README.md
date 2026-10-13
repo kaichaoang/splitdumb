@@ -3,7 +3,7 @@
 A minimal Splitwise-style expense splitter. Static site (HTML/JS) on GitHub Pages, data in Supabase.
 
 ## Features
-- **Accounts:** sign up with a username + password. Change your **display name** and password under *Account*.
+- **Accounts:** sign up with a username + password. Under *Account* you can change your **display name**, password and **profile picture** (cropped to a small square and shown next to your name in every trip).
 - **Trips (groups):** you only see trips you are a member of. A side menu lists them, each tagged **New**, **Unsettled** or **Settled**. Every page has an "← All trips" link.
 - **Adding people:** an existing member adds you by your **username** (or links a name-only person to your account). Having a trip's link is **not** enough to get in.
 - **Expenses:** default payer is you; you can add expenses paid by someone else. Each records **who added it**. Edit or delete any expense (pencil and bin icons). The pencil opens the editor right inside that expense in the list.

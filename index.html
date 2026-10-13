@@ -85,6 +85,9 @@
   /* ---- people, tags */
   .av { width:34px; height:34px; border-radius:50%; flex:none; display:inline-grid; place-items:center; color:#fff; font-weight:700; font-size:14px; background:hsl(var(--h) 52% 46%); }
   .av::before { content:attr(data-i); }
+  .av.pic { background-size:cover; background-position:center; background-repeat:no-repeat; }
+  .av.pic::before { content:none; }
+  .av.big { width:72px; height:72px; font-size:28px; }
   .av.sm { width:28px; height:28px; font-size:12px; }
   .tag { font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap; flex:none; }
   .tag.settled { color:var(--good); background:var(--good-soft); } .tag.settled::before { content:"✓ "; }
@@ -216,7 +219,11 @@ const CURRENCIES = [["SGD","Singapore dollar"],["MYR","Malaysian ringgit"],["USD
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const money = (cents) => (cents / 100).toFixed(2);
 const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
-const av = (name, cls = "") => `<span class="av ${cls}" style="--h:${hue(name)}" data-i="${esc((String(name).trim()[0] || "?").toUpperCase())}"></span>`;
+const PIC_OK = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/;
+const av = (name, cls = "", pic = "") => {
+  const ok = pic && PIC_OK.test(pic);
+  return `<span class="av ${cls}${ok ? " pic" : ""}" style="--h:${hue(name)}${ok ? `;background-image:url('${pic}')` : ""}" data-i="${esc((String(name).trim()[0] || "?").toUpperCase())}"></span>`;
+};
 // Icons: 24x24 outline paths (Lucide, ISC licence), drawn inline so there is nothing extra to load.
 const ICONS = {
   edit: `<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>`,
@@ -310,12 +317,12 @@ let trips = [];
 function renderShell() {
   document.body.classList.toggle("authed", !!session);
   $("barright").innerHTML = session
-    ? `<a class="me" href="#/account" title="Account">${av(session.display_name || session.username, "sm")}</a>` : "";
+    ? `<a class="me" href="#/account" title="Account">${av(session.display_name || session.username, "sm", session.avatar)}</a>` : "";
   if (!session) { $("side").innerHTML = ""; return; }
   const activeId = (location.hash.match(/^#\/g\/([0-9a-f-]{36})$/i) || [])[1];
   const here = location.hash;
   $("side").innerHTML = `
-    <div class="who">${av(session.display_name || session.username)}
+    <div class="who">${av(session.display_name || session.username, "", session.avatar)}
       <div><b>${esc(session.display_name || session.username)}</b><small>@${esc(session.username)}</small></div></div>
     <a class="nav ${here === "" || here === "#/" ? "active" : ""}" href="#/">All trips</a>
     <div class="navhead">Your trips</div>
@@ -364,7 +371,7 @@ function renderAuth(notice) {
     try {
       const d = await callPublic(signup ? "register_user" : "login_user", { p_username: username, p_password: password });
       if (d.error) throw new Error(d.error);
-      setSession({ token: d.token, id: d.id, username: d.username, display_name: d.display_name });
+      setSession({ token: d.token, id: d.id, username: d.username, display_name: d.display_name, avatar: d.avatar || "" });
       route();
     } catch (e) { toast(friendly(e.message)); $("go").disabled = false; }
   };
@@ -424,13 +431,35 @@ function renderNew() {
   };
 }
 
+// Centre-crop an image file to a size x size JPEG data URL (small enough to store in the database).
+async function squarePhoto(file, size) {
+  let bmp;
+  try { bmp = await createImageBitmap(file); } catch { throw new Error("Couldn't read that image. Try a JPG or PNG."); }
+  const side = Math.min(bmp.width, bmp.height), c = document.createElement("canvas");
+  c.width = c.height = size;
+  const x = c.getContext("2d");
+  x.fillStyle = "#fff"; x.fillRect(0, 0, size, size);
+  x.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
+  return c.toDataURL("image/jpeg", 0.82);
+}
+
 function renderAccount() {
   app.innerHTML = `
     <a class="back" href="#/">← All trips</a>
     <h2 class="page">Account</h2>
     <div class="card">
-      <div class="person">${av(session.display_name || session.username)}<div><b>@${esc(session.username)}</b>
+      <div class="person">${av(session.display_name || session.username, "", session.avatar)}<div><b>@${esc(session.username)}</b>
         <div class="muted">Your username. Friends use it to add you to trips, and it can't be changed.</div></div></div>
+    </div>
+    <h2>Profile picture</h2>
+    <div class="card">
+      <div class="person">${av(session.display_name || session.username, "big", session.avatar)}
+        <div class="muted">Shown next to your name in every trip you're in. It's cropped to a square.</div></div>
+      <input id="picfile" type="file" accept="image/*" hidden>
+      <div class="formbtns">
+        <button id="picpick">${session.avatar ? "Change photo" : "Choose photo"}</button>
+        ${session.avatar ? `<button id="picdel" class="ghost">Remove</button>` : ""}
+      </div>
     </div>
     <h2>Display name</h2>
     <div class="card">
@@ -445,6 +474,24 @@ function renderAccount() {
       <input id="np2" type="password" placeholder="Confirm new password" autocomplete="new-password">
       <button id="pwsave">Change password</button>
     </div>`;
+  const savePic = async (data) => {
+    const u = await call("set_avatar", { p_avatar: data });
+    setSession({ ...session, avatar: u.avatar || "" });
+    renderShell(); renderAccount();
+    toast(data ? "Profile picture updated." : "Profile picture removed.", "ok");
+  };
+  $("picpick").onclick = () => $("picfile").click();
+  $("picfile").onchange = async (ev) => {
+    const f = ev.target.files[0]; ev.target.value = "";
+    if (!f) return;
+    $("picpick").disabled = true;
+    try { await savePic(await squarePhoto(f, 128)); } catch (e) { toast(friendly(e.message)); }
+    $("picpick").disabled = false;
+  };
+  if ($("picdel")) $("picdel").onclick = async (ev) => {
+    ev.target.disabled = true;
+    try { await savePic(""); } catch (e) { toast(friendly(e.message)); ev.target.disabled = false; }
+  };
   $("dnsave").onclick = async (ev) => {
     ev.target.disabled = true;
     try {
@@ -517,7 +564,7 @@ function drawGroup(ctx) {
 
     <details class="sec" data-sec="bal" ${openSecs.has("bal") ? "open" : ""}><summary>Balances</summary>
     ${curs.length ? curs.map((c) => `<div class="cur">${esc(c)}</div>` + members.map((m) => { const b = byCur[c][m.id];
-      return `<div class="card row"><div class="person">${av(m.name)}<span>${esc(m.name)}${youTag(m)}</span></div>
+      return `<div class="card row"><div class="person">${av(m.name, "", m.avatar)}<span>${esc(m.name)}${youTag(m)}</span></div>
         <span class="amt ${b > 0 ? "pos" : b < 0 ? "neg" : "zero"}">${b > 0 ? "gets back " + esc(c) + " " + money(b) : b < 0 ? "owes " + esc(c) + " " + money(-b) : "settled"}</span></div>`; }).join("")).join("")
       : `<div class="muted">No expenses yet.</div>`}
 
@@ -534,7 +581,7 @@ function drawGroup(ctx) {
     <details class="sec" data-sec="spend" ${openSecs.has("spend") ? "open" : ""}><summary>Spending</summary>
     ${curs.length ? Object.entries(spend).map(([c, s]) => `<div class="cur">${esc(c)} · group total ${money(s.total)}</div>` +
       members.map((m) => { const r = s.byMember[m.id];
-        return `<div class="card row"><div class="person">${av(m.name)}<span>${esc(m.name)}${youTag(m)}</span></div>
+        return `<div class="card row"><div class="person">${av(m.name, "", m.avatar)}<span>${esc(m.name)}${youTag(m)}</span></div>
           <span><b>${esc(c)} ${money(r.spent)}</b> <span class="muted">spent · paid ${money(r.paid)}</span></span></div>`; }).join("")).join("")
       + `<div class="muted">Spent = each person's share of the expenses. Paid = what they put up front.</div>`
       : `<div class="muted">No expenses yet.</div>`}
@@ -544,7 +591,7 @@ function drawGroup(ctx) {
     <details class="sec" data-sec="stats" ${openSecs.has("stats") ? "open" : ""}><summary>Statistics</summary>
     ${curs.length ? Object.entries(spend).map(([c, s]) => {
       const people = members.map((m) => ({ m, v: s.byMember[m.id].spent })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v)
-        .map((x, i) => ({ icon: av(x.m.name, "sm"), label: x.m.name + youTag(x.m), cents: x.v, color: `var(--c${i % 6})` }));
+        .map((x, i) => ({ icon: av(x.m.name, "sm", x.m.avatar), label: x.m.name + youTag(x.m), cents: x.v, color: `var(--c${i % 6})` }));
       const cats = Object.entries(catSpend[c].byCat).sort((a, b) => b[1] - a[1])
         .map(([k, v]) => ({ icon: `<span class="catbadge sm ${k ? "" : "none"}">${catIcon(k)}</span>`, label: catLabel(k), cents: v, color: `var(--c${CATCOLOR[k]})` }));
       return `<div class="cur">${esc(c)} · trip total ${money(s.total)}</div>`
@@ -569,7 +616,7 @@ function drawGroup(ctx) {
     </details>
 
     <h2>People</h2>
-    ${members.map((m) => `<div class="card row"><div class="person">${av(m.name)}<div>${esc(m.name)}${youTag(m)}
+    ${members.map((m) => `<div class="card row"><div class="person">${av(m.name, "", m.avatar)}<div>${esc(m.name)}${youTag(m)}
         <div class="muted">${m.linked ? "@" + esc(m.username) : "no account"}</div></div></div>
         ${m.linked ? "" : `<button class="ghost" data-link="${m.id}">Link account</button>`}</div>`).join("")}
     <div class="card">
@@ -709,7 +756,7 @@ function formHtml(ctx, editing) {
       </div>
       <div class="splitbox ${mode === "percent" ? "mode-percent" : ""}" data-f="splitbox">
         ${members.map((m) => `<div class="srow" data-id="${m.id}">
-          <label class="chk"><input type="checkbox" class="inc" value="${m.id}" ${checked.has(m.id) ? "checked" : ""}><span class="person">${av(m.name, "sm")}${esc(m.name)}${youTag(m)}</span></label>
+          <label class="chk"><input type="checkbox" class="inc" value="${m.id}" ${checked.has(m.id) ? "checked" : ""}><span class="person">${av(m.name, "sm", m.avatar)}${esc(m.name)}${youTag(m)}</span></label>
           <span class="pctwrap"><input class="pct" type="number" step="0.001" min="0" max="100" inputmode="decimal" value="${pct[m.id] ?? 0}"><span class="muted">%</span></span>
           <span class="prev muted"></span></div>`).join("")}
         <div data-f="pcttotal" class="muted"></div>

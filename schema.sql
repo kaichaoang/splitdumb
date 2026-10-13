@@ -75,6 +75,7 @@ alter table expenses  add column if not exists category     text not null defaul
 alter table splits    add column if not exists percent      numeric(6,3);
 alter table members   add column if not exists user_id      uuid references app_users(id) on delete set null;
 alter table app_users add column if not exists display_name text;
+alter table app_users add column if not exists avatar text;
 
 create unique index if not exists app_users_username_lower on app_users (lower(username));
 create unique index if not exists members_group_user_uniq on members(group_id, user_id) where user_id is not null;
@@ -109,7 +110,8 @@ alter table sessions alter column expires_at set default now() + interval '1 yea
 -- ------------------------------------------------- internal helpers (not callable via the API)
 create or replace function user_json(u app_users) returns jsonb
 language sql immutable
-as $$ select jsonb_build_object('id', u.id, 'username', u.username, 'display_name', coalesce(u.display_name, u.username)) $$;
+as $$ select jsonb_build_object('id', u.id, 'username', u.username, 'display_name', coalesce(u.display_name, u.username),
+                         'avatar', coalesce(u.avatar, '')) $$;
 
 create or replace function new_session(p_user uuid) returns text
 language plpgsql security definer set search_path = public, extensions, pg_temp
@@ -232,6 +234,19 @@ begin
   return user_json(u);
 end $$;
 
+-- Set or remove your profile picture. The app sends a small (~128px) JPEG as a data URL; empty removes it.
+create or replace function set_avatar(p_token text, p_avatar text) returns jsonb
+language plpgsql security definer set search_path = public, extensions, pg_temp
+as $$
+declare uid uuid := auth_user(p_token); a text := coalesce(p_avatar, ''); u app_users;
+begin
+  if a <> '' and (length(a) > 40000 or a !~ '^data:image/jpeg;base64,[A-Za-z0-9+/]+=*$') then
+    raise exception 'That picture is not valid or is too large';
+  end if;
+  update app_users set avatar = nullif(a, '') where id = uid returning * into u;
+  return user_json(u);
+end $$;
+
 -- ------------------------------------------------------------ groups
 -- A trip is settled when, in every currency, everyone's paid / share / settle-up payments net to zero.
 create or replace function group_settled(p_group uuid) returns boolean
@@ -297,7 +312,8 @@ begin
     'group',   (select jsonb_build_object('id', g.id, 'name', g.name) from groups g where g.id = p_group),
     'me',      mid,
     'members', coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'name', m.name, 'username', u.username,
-                                                              'linked', m.user_id is not null) order by m.name)
+                                                              'linked', m.user_id is not null,
+                                                              'avatar', coalesce(u.avatar, '')) order by m.name)
                            from members m left join app_users u on u.id = m.user_id where m.group_id = p_group), '[]'::jsonb),
     'expenses', coalesce((select jsonb_agg(to_jsonb(e) order by e.created_at desc) from expenses e where e.group_id = p_group), '[]'::jsonb),
     'splits',   coalesce((select jsonb_agg(to_jsonb(s)) from splits s join expenses e on e.id = s.expense_id where e.group_id = p_group), '[]'::jsonb),
@@ -457,7 +473,7 @@ revoke all on function user_json(app_users), new_session(uuid), auth_user(text),
 
 grant execute on function
   register_user(text, text), login_user(text, text), logout(text), me(text),
-  change_password(text, text, text), set_display_name(text, text),
+  change_password(text, text, text), set_display_name(text, text), set_avatar(text, text),
   my_groups(text), create_group(text, text, text[]), rename_group(text, uuid, text), get_group(text, uuid),
   add_member(text, uuid, text, text), link_member(text, uuid, text),
   save_expense(text, uuid, uuid, text, numeric, text, uuid, text, jsonb, text),
