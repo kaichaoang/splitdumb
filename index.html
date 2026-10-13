@@ -333,6 +333,12 @@ const tagHtml = (k) => `<span class="tag ${k}">${TAGS[k]}</span>`;
 const tripKind = (t) => (!t.expense_count ? "new" : t.settled ? "settled" : "open");
 const getLastCurrency = () => { try { return localStorage.getItem("lastCurrency") || DEFAULT_CURRENCY; } catch { return DEFAULT_CURRENCY; } };
 const setLastCurrency = (c) => { try { localStorage.setItem("lastCurrency", c); } catch {} };
+// Currency to pre-select for a new expense: what you added most recently in this trip (else anyone's latest), else the last one used on this device.
+function defaultCurrency(ctx) {
+  const latest = (list) => list.reduce((a, e) => (!a || e.created_at > a.created_at ? e : a), null);
+  const e = latest(ctx.expenses.filter((x) => x.added_by === ctx.meId)) || latest(ctx.expenses);
+  return e ? curOf(e) : getLastCurrency();
+}
 const friendly = (msg) => /could not find the function|schema cache|permission denied for/i.test(msg || "")
   ? `The database hasn't been updated yet. Run the latest schema.sql in Supabase, then refresh. (${msg})` : (msg || "Something went wrong");
 
@@ -342,7 +348,7 @@ let session = null;
 try { session = JSON.parse(localStorage.getItem("session") || "null"); } catch {}
 function setSession(s) {
   session = s;
-  try { s ? localStorage.setItem("session", JSON.stringify(s)) : localStorage.removeItem("session"); } catch {}
+  try { s ? localStorage.setItem("session", JSON.stringify(s)) : (localStorage.removeItem("session"), localStorage.removeItem("lastHash")); } catch {}
 }
 async function call(fn, args = {}) {
   const { data, error } = await sb.rpc(fn, { p_token: session && session.token, ...args });
@@ -444,6 +450,9 @@ async function route() {
   if (!session) { renderShell(); return renderAuth(); }
   try {
     trips = await call("my_groups");       // also proves the session is still valid
+    if (/^#\/g\/[0-9a-f-]{36}$/i.test(location.hash) || location.hash === "#/" || location.hash === "") {
+      try { localStorage.setItem("lastHash", location.hash || "#/"); } catch {}   // so the installed app reopens where you left off
+    }
     renderShell();
     const h = location.hash, g = h.match(/^#\/g\/([0-9a-f-]{36})$/i);
     if (g) await renderGroup(g[1]);
@@ -825,7 +834,7 @@ function formHtml(ctx, editing) {
   if (mode === "percent") editSplits.forEach((s) => (pct[s.member_id] = Number(s.percent)));
   else equalPercents([...checked]).forEach((e) => (pct[e.id] = e.percent));
   const whenVal = localInputValue(editing ? (editing.spent_at || editing.created_at) : new Date());
-  const cur = editing ? curOf(editing) : getLastCurrency(), known = CURRENCIES.some(([c]) => c === cur);
+  const cur = editing ? curOf(editing) : defaultCurrency(ctx), known = CURRENCIES.some(([c]) => c === cur);
   return `
       <input data-f="desc" placeholder="What was it for?" value="${editing ? esc(editing.description) : ""}">
       <div class="grid2">
@@ -933,7 +942,7 @@ function wireForm(root, ctx, editing, onCancel) {
         p_id: editing ? editing.id : null, p_group: id, p_description: description, p_amount: amount,
         p_currency: currency, p_paid_by: f("payer").value, p_split_type: mode, p_splits: split,
         p_category: picked ? picked.value : "", p_spent_at: whenDate.toISOString() });
-      setLastCurrency(currency);
+      if (!editing) setLastCurrency(currency);
       route();
     } catch (e) { showErr(null, e); ev.target.disabled = false; }
   };
@@ -942,6 +951,11 @@ function wireForm(root, ctx, editing, onCancel) {
 }
 
 window.addEventListener("hashchange", route);
+// Launched from the home screen (no hash): go back to the trip you were last looking at.
+try {
+  const last = localStorage.getItem("lastHash");
+  if (!location.hash && last && last !== "#/" && /^#\/g\/[0-9a-f-]{36}$/i.test(last)) history.replaceState(null, "", location.pathname + location.search + last);
+} catch {}
 route();
 </script>
 </body>
