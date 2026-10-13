@@ -140,6 +140,21 @@ function convertedSpending(members, expenses, splits, rates, base, norm = (c) =>
   return { base, byMember, byCat, total: Object.values(byCat).reduce((t, v) => t + v, 0), missing: [...missing].sort() };
 }
 
+// Each person's spending split by category: { memberId: { cat: cents } }.
+// `factor(currency)` gives the multiplier into the shown currency (1 for the one being viewed), or null to leave an expense out.
+function personCategorySpend(expenses, splits, factor, norm = (c) => c || "") {
+  const info = {};
+  expenses.forEach((e) => { const k = factor(curOf(e)); if (k !== null && k !== undefined) info[e.id] = { k, cat: norm(e.category) || "" }; });
+  const out = {};
+  splits.forEach((s) => {
+    const i = info[s.expense_id];
+    if (!i) return;
+    const row = (out[s.member_id] = out[s.member_id] || {});
+    row[i.cat] = (row[i.cat] || 0) + Math.round(s.share * 100 * i.k);
+  });
+  return out;
+}
+
 // Greedy debt simplification -> [{from, to, cents}]
 function simplifyDebts(bal) {
   const debtors = [], creditors = [];
@@ -165,6 +180,6 @@ function simplifyDebts(bal) {
 if (typeof module !== "undefined") {
   module.exports = {
     equalSplit, percentSplit, equalPercents, computeBalances,
-    balancesByCurrency, spendingByCurrency, spendingByCategory, convertedSpending, simplifyDebts,
+    balancesByCurrency, spendingByCurrency, spendingByCategory, convertedSpending, personCategorySpend, simplifyDebts,
   };
 }

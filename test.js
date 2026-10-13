@@ -129,6 +129,14 @@ assert.strictEqual(L.convertedSpending(cm, cx, cspl, rates, "USD").total, 16000)
 // converting to a currency's own base changes nothing
 assert.strictEqual(L.convertedSpending(cm, [cx[1]], cspl, rates, "MYR").total, 20000);
 
+// ---- per-person category breakdown agrees with the per-person totals ----
+const pcs = L.personCategorySpend(cx, cspl, (c) => (rates[c] > 0 ? rates.MYR / rates[c] : null), (c) => c || "");
+assert.deepStrictEqual(pcs.a, { food: 30000, "": 2000 });   // half of (400 + 200) MYR, half of 10 USD = 20 MYR
+const cvm = L.convertedSpending(cm, cx, cspl, rates, "MYR");
+for (const id of ["a", "b"]) assert.strictEqual(Object.values(pcs[id]).reduce((t, v) => t + v, 0), cvm.byMember[id]);
+// one currency only: expenses in other currencies are left out
+assert.deepStrictEqual(L.personCategorySpend(cx, cspl, (c) => (c === "MYR" ? 1 : null)).b, { food: 10000 });
+
 // legacy rows without a currency count as the default currency
 assert.deepStrictEqual(Object.keys(balancesByCurrency(m2, [{ id: "z", amount: 10, paid_by: "y" }], equalSplit(10, ["y", "k"]).map((x) => ({ ...x, expense_id: "z" })), [])), ["SGD"]);
 

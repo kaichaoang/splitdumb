@@ -167,7 +167,18 @@
   .exp .title { font-weight:600; }
   /* ---- statistics bars */
   .stathead { font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:10px; }
-  .stat + .stat { margin-top:12px; }
+  .statrows > * + * { margin-top:12px; }
+  .statrowbtn { display:block; width:100%; background:transparent; color:inherit; font-weight:inherit; text-align:left; padding:6px 8px; margin:-6px -8px; border:0; border-radius:10px; cursor:pointer; box-sizing:content-box; }
+  .statrowbtn:hover { background:var(--primary-soft); filter:none; }
+  .statrowbtn .sname::after { content:"▾"; margin-left:6px; color:var(--muted); font-size:12px; }
+  .statrowbtn[aria-expanded=true] .sname::after { content:"▴"; }
+  .statsub { margin:8px 0 2px 2px; padding-left:8px; border-left:2px solid var(--line); }
+  .statsub .sname { font-size:13.5px; }
+  .statsub .sval { font-size:13.5px; }
+  .statsub .catbadge.sm { width:24px; height:24px; border-radius:8px; }
+  .statsub .catbadge.sm svg { width:15px; height:15px; }
+  .statsub .row, .statsub .person { gap:5px; }
+  .statsub .stat + .stat { margin-top:10px; }
   .stat .row, .stat .person { gap:8px; }
   .stat .sname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; }
   .stat .sval { white-space:nowrap; font-variant-numeric:tabular-nums; }
@@ -269,9 +280,10 @@ const donut = (parts, total, cur, aria) => {
 // A statistics card: donut (only when there are 2+ slices to compare) next to labelled bars that act as its legend.
 const statCard = (parts, total, cur, aria) => `<div class="card"><div class="statchart">
     ${parts.length > 1 ? donut(parts, total, cur, aria + ": " + parts.map((p) => `${p.label} ${((p.cents / total) * 100).toFixed(1)}%`).join(", ")) : ""}
-    <div class="statrows">${parts.map((p) => statRow(p.icon, p.label, p.cents, total, p.color)).join("")}</div></div></div>`;
+    <div class="statrows">${parts.map((p) => p.id === undefined ? statRow(p.icon, p.label, p.cents, total, p.color)
+      : `<div><button type="button" class="statrowbtn" data-person="${esc(p.id)}" aria-expanded="${p.open}">${statRow(p.icon, p.label, p.cents, total, p.color)}</button>${p.open ? `<div class="statsub">${p.detail}</div>` : ""}</div>`).join("")}</div></div></div>`;
 // which statistics tab / currency view is showing (survives redraws)
-const statsUI = { tab: "person", view: "all" };
+const statsUI = { tab: "person", view: "all", open: new Set() };   // open = people whose category breakdown is expanded
 // ---- exchange rates, only for the combined statistics (never for balances or settle-up).
 // Units per 1 USD. Live rates come from a free public API and are cached for 12h; if that fails these rough estimates are used.
 const FX_FALLBACK = { USD:1, SGD:1.29, MYR:4.2, EUR:0.86, GBP:0.75, JPY:150, THB:33, IDR:16500, AUD:1.5, CNY:7.1, HKD:7.8, KRW:1400,
@@ -585,8 +597,15 @@ function drawGroup(ctx) {
     } else {
       byPerson = members.map((m) => [m, spend[view].byMember[m.id].spent]); byCat = Object.entries(catSpend[view].byCat); label = view;
     }
+    const factor = view === "all" ? (c) => (FX.rates[c] > 0 && FX.rates[base] > 0 ? FX.rates[base] / FX.rates[c] : null) : (c) => (c === view ? 1 : null);
+    const perCat = personCategorySpend(expenses, splits, factor, catKey);
     const people = byPerson.filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
-      .map(([m, v], i) => ({ icon: av(m.name, "sm", m.avatar), label: m.name + youTag(m), cents: v, color: `var(--c${i % 6})` }));
+      .map(([m, v], i) => {
+        const sub = Object.entries(perCat[m.id] || {}).filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]);
+        const subTotal = sub.reduce((t, [, x]) => t + x, 0);
+        return { id: m.id, open: statsUI.open.has(m.id), icon: av(m.name, "sm", m.avatar), label: m.name + youTag(m), cents: v, color: `var(--c${i % 6})`,
+          detail: sub.map(([k, x]) => statRow(`<span class="catbadge sm ${k ? "" : "none"}">${catIcon(k)}</span>`, catLabel(k), x, subTotal, `var(--c${CATCOLOR[k]})`)).join("") };
+      });
     const cats = byCat.filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
       .map(([k, v]) => ({ icon: `<span class="catbadge sm ${k ? "" : "none"}">${catIcon(k)}</span>`, label: catLabel(k), cents: v, color: `var(--c${CATCOLOR[k]})` }));
     const parts = statsUI.tab === "person" ? people : cats, total = parts.reduce((t, p) => t + p.cents, 0);
@@ -600,6 +619,11 @@ function drawGroup(ctx) {
           .map((c) => `<option value="${c}" ${c === base ? "selected" : ""}>≈ ${c}</option>`).join("")}</select>` : ""}</div>` : ""}
       ${parts.length ? statCard(parts, total, label, statsUI.tab === "person" ? "Spending by person" : "Spending by category") : `<div class="muted">Nothing to show.</div>`}
       ${missing.length ? `<div class="muted">Not included (no exchange rate): ${esc(missing.join(", "))}</div>` : ""}`;
+    el.querySelectorAll("[data-person]").forEach((b) => (b.onclick = () => {
+      const id = b.dataset.person;
+      statsUI.open.has(id) ? statsUI.open.delete(id) : statsUI.open.add(id);
+      paintStats();
+    }));
     el.querySelectorAll("[data-tab]").forEach((b) => (b.onclick = () => { statsUI.tab = b.dataset.tab; paintStats(); }));
     if ($("stview")) $("stview").onchange = (ev) => { statsUI.view = ev.target.value; paintStats(); };
     if ($("statbase")) $("statbase").onchange = (ev) => { try { localStorage.setItem("statsBase", ev.target.value); } catch {} paintStats(); };
@@ -630,15 +654,6 @@ function drawGroup(ctx) {
         <span>${esc(name[d.from])} pays ${esc(name[d.to])} <b>${esc(d.currency)} ${money(d.cents)}</b></span>
         <button class="ghost" data-settle="${i}">Mark paid</button></div>`).join("")
       : `<div class="muted">${expenses.length ? "Everyone is settled up." : "Nothing to settle yet."}</div>`}
-
-    </details>
-
-    <details class="sec" data-sec="spend" ${openSecs.has("spend") ? "open" : ""}><summary>Spending</summary>
-    ${curs.length ? Object.entries(spend).map(([c, s]) => `<div class="cur">${esc(c)} · group total ${money(s.total)}</div>` +
-      members.map((m) => { const r = s.byMember[m.id];
-        return `<div class="card row"><div class="person">${av(m.name, "", m.avatar)}<span>${esc(m.name)}${youTag(m)}</span></div>
-          <span><b>${esc(c)} ${money(r.spent)}</b> <span class="muted">spent · paid ${money(r.paid)}</span></span></div>`; }).join("")).join("")
-      : `<div class="muted">No expenses yet.</div>`}
 
     </details>
 

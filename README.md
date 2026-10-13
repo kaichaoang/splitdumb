@@ -12,7 +12,7 @@ A minimal Splitwise-style expense splitter. Static site (HTML/JS) on GitHub Page
 - **Multi-currency:** each expense has its own currency. Balances, settle-up and spending are per currency, no conversion.
 - **Statistics:** one chart at a time, switch between **By person** and **By category**, for **all currencies combined** (converted into one currency you pick, default SGD) or any single currency.
 - **Exchange rates** (combined view only): live rates from a free public API (open.er-api.com), cached for 12 hours, with rough built-in estimates as a fallback. It is an estimate; balances and settle-up never mix currencies.
-- **Spending per person:** your share of the expenses vs what you paid up front (pay 30 for a coffee in a 2-person group: your spending is 15, the other person owes you 15).
+- **Spending per person:** in Statistics, each person's share of the expenses. Tap a person to see what they spent it on, by category.
 
 ## Setup
 
