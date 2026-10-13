@@ -77,6 +77,12 @@ alter table members   add column if not exists user_id      uuid references app_
 alter table app_users add column if not exists display_name text;
 alter table app_users add column if not exists avatar text;
 
+-- When the expense happened (editable). Older rows get 12:00 noon (Singapore time) on the day they were added.
+alter table expenses add column if not exists spent_at timestamptz;
+update expenses set spent_at = ((created_at at time zone 'Asia/Singapore')::date + time '12:00') at time zone 'Asia/Singapore' where spent_at is null;
+alter table expenses alter column spent_at set default now();
+alter table expenses alter column spent_at set not null;
+
 create unique index if not exists app_users_username_lower on app_users (lower(username));
 create unique index if not exists members_group_user_uniq on members(group_id, user_id) where user_id is not null;
 create index if not exists members_group_idx  on members(group_id);
@@ -102,6 +108,7 @@ end $$;
 -- ------------------------------------------------------- remove old versions
 drop function if exists save_expense(uuid, uuid, text, numeric, text, uuid, uuid, text, jsonb);
 drop function if exists save_expense(text, uuid, uuid, text, numeric, text, uuid, text, jsonb);   -- before categories
+drop function if exists save_expense(text, uuid, uuid, text, numeric, text, uuid, text, jsonb, text);   -- before date/time
 drop function if exists register_user(text, text);
 drop function if exists login_user(text, text);
 
@@ -315,7 +322,7 @@ begin
                                                               'linked', m.user_id is not null,
                                                               'avatar', coalesce(u.avatar, '')) order by m.name)
                            from members m left join app_users u on u.id = m.user_id where m.group_id = p_group), '[]'::jsonb),
-    'expenses', coalesce((select jsonb_agg(to_jsonb(e) order by e.created_at desc) from expenses e where e.group_id = p_group), '[]'::jsonb),
+    'expenses', coalesce((select jsonb_agg(to_jsonb(e) order by e.spent_at desc, e.created_at desc) from expenses e where e.group_id = p_group), '[]'::jsonb),
     'splits',   coalesce((select jsonb_agg(to_jsonb(s)) from splits s join expenses e on e.id = s.expense_id where e.group_id = p_group), '[]'::jsonb),
     'payments', coalesce((select jsonb_agg(to_jsonb(p) order by p.created_at desc) from payments p where p.group_id = p_group), '[]'::jsonb)
   );
@@ -368,7 +375,7 @@ end $$;
 -- p_category: '' (none) or one of transport, food, utilities, accommodation, gift, entertainment. Optional, so older callers still work.
 create or replace function save_expense(
   p_token text, p_id uuid, p_group uuid, p_description text, p_amount numeric, p_currency text,
-  p_paid_by uuid, p_split_type text, p_splits jsonb, p_category text default ''
+  p_paid_by uuid, p_split_type text, p_splits jsonb, p_category text default '', p_spent_at timestamptz default null
 ) returns uuid
 language plpgsql security definer set search_path = public, extensions, pg_temp
 as $$
@@ -385,6 +392,7 @@ begin
   if p_split_type not in ('equal', 'percent') then raise exception 'Bad split type'; end if;
   if p_currency is null or p_currency !~ '^[A-Z]{3}$' then raise exception 'Currency must be a 3-letter code'; end if;
   if p_amount is null or p_amount <= 0 then raise exception 'Amount must be more than 0'; end if;
+  if p_spent_at is not null and (p_spent_at < timestamptz '2000-01-01' or p_spent_at > now() + interval '2 years') then raise exception 'That date looks wrong'; end if;
   if p_splits is null or jsonb_typeof(p_splits) <> 'array' or jsonb_array_length(p_splits) = 0 then
     raise exception 'Pick at least one person to split with';
   end if;
@@ -404,13 +412,14 @@ begin
   end if;
 
   if v_id is null then
-    insert into expenses(group_id, description, amount, currency, paid_by, added_by, split_type, category)
-    values (p_group, v_desc, p_amount, p_currency, p_paid_by, mid, p_split_type, v_cat)
+    insert into expenses(group_id, description, amount, currency, paid_by, added_by, split_type, category, spent_at)
+    values (p_group, v_desc, p_amount, p_currency, p_paid_by, mid, p_split_type, v_cat, coalesce(p_spent_at, now()))
     returning id into v_id;
   else
     update expenses
        set description = v_desc, amount = p_amount, currency = p_currency,
-           paid_by = p_paid_by, split_type = p_split_type, category = v_cat
+           paid_by = p_paid_by, split_type = p_split_type, category = v_cat,
+           spent_at = coalesce(p_spent_at, spent_at)
      where id = v_id and group_id = p_group;
     if not found then raise exception 'Expense not found'; end if;
     delete from splits where expense_id = v_id;
@@ -476,7 +485,7 @@ grant execute on function
   change_password(text, text, text), set_display_name(text, text), set_avatar(text, text),
   my_groups(text), create_group(text, text, text[]), rename_group(text, uuid, text), get_group(text, uuid),
   add_member(text, uuid, text, text), link_member(text, uuid, text),
-  save_expense(text, uuid, uuid, text, numeric, text, uuid, text, jsonb, text),
+  save_expense(text, uuid, uuid, text, numeric, text, uuid, text, jsonb, text, timestamptz),
   delete_expense(text, uuid), add_payment(text, uuid, uuid, uuid, numeric, text)
   to anon, authenticated;
 

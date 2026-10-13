@@ -149,6 +149,9 @@
   .filters label { font-size:12.5px; color:var(--muted); font-weight:600; min-width:0; }
   /* one explicit height for every filter field, so the date boxes match the dropdowns */
   .filters input, .filters select { margin:2px 0 0; padding:0 10px; height:40px; line-height:normal; font-weight:400; min-width:0; max-width:100%; }
+  input[type=datetime-local] { -webkit-appearance:none; appearance:none; text-align:left; height:47px; padding-top:0; padding-bottom:0; }
+  input[type=datetime-local]::-webkit-date-and-time-value { text-align:left; margin:0; }
+  input[type=datetime-local]::-webkit-datetime-edit { padding:0; text-align:left; }
   .filters input[type=date] { -webkit-appearance:none; appearance:none; text-align:left; }
   /* Safari / iPhone centres a chosen date inside the box; pin it to the left like the other fields */
   .filters input[type=date]::-webkit-date-and-time-value { text-align:left; margin:0; }
@@ -715,11 +718,12 @@ function drawGroup(ctx) {
   wireForm($("addform"), ctx, null);
 
   // ---- expenses list (filters redraw only the list, so typing/focus isn't lost)
+  const when = (e) => e.spent_at || e.created_at;
   const localDay = (iso) => { const t = new Date(iso); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; };
   let shown = expenses;
   function paintExp() {
     const list = expenses.filter((e) =>
-      (!filt.from || localDay(e.created_at) >= filt.from) && (!filt.to || localDay(e.created_at) <= filt.to) &&
+      (!filt.from || localDay(when(e)) >= filt.from) && (!filt.to || localDay(when(e)) <= filt.to) &&
       (!filt.by || e.added_by === filt.by) && (!filt.paid || e.paid_by === filt.paid) && (!filt.cur || curOf(e) === filt.cur) &&
       (!filt.cat || (filt.cat === "none" ? !catKey(e.category) : catKey(e.category) === filt.cat)));
     shown = list;
@@ -734,7 +738,7 @@ function drawGroup(ctx) {
       return `<div class="card row exp">
         <div class="expmain"><span class="catbadge ${catKey(e.category) ? "" : "none"}" title="${esc(catLabel(e.category))}">${catIcon(e.category)}</span>
         <div><div class="title">${esc(e.description)}</div>
-          <div class="muted">${esc(name[e.paid_by] || "?")} paid ${esc(curOf(e))} ${Number(e.amount).toFixed(2)} · ${new Date(e.created_at).toLocaleDateString()}${e.added_by && name[e.added_by] ? ` · added by ${esc(name[e.added_by])}` : ""}</div>
+          <div class="muted">${esc(name[e.paid_by] || "?")} paid ${esc(curOf(e))} ${Number(e.amount).toFixed(2)} · ${new Date(when(e)).toLocaleDateString()} ${new Date(when(e)).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${e.added_by && name[e.added_by] ? ` · added by ${esc(name[e.added_by])}` : ""}</div>
           <div class="muted">${line2}</div></div></div>
         <div class="btns"><button class="ghost icon" data-edit="${e.id}" title="Edit" aria-label="Edit expense">${svg("edit")}</button><button class="ghost icon danger" data-del="${e.id}" title="Delete" aria-label="Delete expense">${svg("trash")}</button></div></div>`; }).join("")
       : `<div class="muted" style="padding:6px 0 12px">${expenses.length ? "No expenses match these filters." : "No expenses yet."}</div>`;
@@ -758,9 +762,9 @@ function drawGroup(ctx) {
     const cell = (v) => { let t = v == null ? "" : String(v); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;   // stop spreadsheet formula injection
       return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
     const head = ["Date", "Description", "Category", "Amount", "Currency", "Paid by", "Added by", "Split", ...members.map((m) => `Share: ${m.name}`)];
-    const rows = [...shown].sort((a, b) => a.created_at.localeCompare(b.created_at)).map((e) => {
+    const rows = [...shown].sort((a, b) => new Date(when(a)) - new Date(when(b))).map((e) => {
       const sp = splits.filter((s) => s.expense_id === e.id);
-      return [localDay(e.created_at), e.description, catKey(e.category) ? catLabel(e.category) : "", Number(e.amount).toFixed(2), curOf(e), name[e.paid_by] || "", name[e.added_by] || "", e.split_type || "equal",
+      return [localDay(when(e)) + " " + new Date(when(e)).toTimeString().slice(0, 5), e.description, catKey(e.category) ? catLabel(e.category) : "", Number(e.amount).toFixed(2), curOf(e), name[e.paid_by] || "", name[e.added_by] || "", e.split_type || "equal",
         ...members.map((m) => { const s = sp.find((x) => x.member_id === m.id); return s ? Number(s.share).toFixed(2) : ""; })];
     });
     const csv = "\ufeff" + [head, ...rows].map((r) => r.map(cell).join(",")).join("\r\n");
@@ -795,6 +799,8 @@ function drawGroup(ctx) {
 
 // The add / edit expense form. It is used once at the top (add) and again in place inside an expense card (edit),
 // so every field is found by data-f inside its own root element instead of by a page-wide id.
+// value for <input type=datetime-local>: local time as YYYY-MM-DDTHH:mm
+const localInputValue = (d) => { const t = new Date(d), p = (n) => String(n).padStart(2, "0"); return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}T${p(t.getHours())}:${p(t.getMinutes())}`; };
 function formHtml(ctx, editing) {
   const { members, meId, splits } = ctx;
   const youTag = (m) => (m.id === meId ? " (you)" : "");
@@ -806,6 +812,7 @@ function formHtml(ctx, editing) {
   const pct = {};
   if (mode === "percent") editSplits.forEach((s) => (pct[s.member_id] = Number(s.percent)));
   else equalPercents([...checked]).forEach((e) => (pct[e.id] = e.percent));
+  const whenVal = localInputValue(editing ? (editing.spent_at || editing.created_at) : new Date());
   const cur = editing ? curOf(editing) : getLastCurrency(), known = CURRENCIES.some(([c]) => c === cur);
   return `
       <input data-f="desc" placeholder="What was it for?" value="${editing ? esc(editing.description) : ""}">
@@ -815,6 +822,8 @@ function formHtml(ctx, editing) {
           <select data-f="ccy" aria-label="Currency">${(known ? CURRENCIES : [[cur, ""], ...CURRENCIES]).map(([c, n]) => `<option value="${c}" ${c === cur ? "selected" : ""}>${c}${n ? " · " + n : ""}</option>`).join("")}<option value="OTHER">Other…</option></select></div>
         <input data-f="ccyother" class="upper" maxlength="3" placeholder="3-letter code" style="display:none;grid-column:1/-1">
       </div>
+      <div class="muted" style="margin-top:6px">When</div>
+      <input data-f="when" type="datetime-local" value="${whenVal}" data-init="${editing ? "" : whenVal}">
       <div class="muted" style="margin-top:6px">Category</div>
       <div class="cats" role="radiogroup" aria-label="Category">${CATS.map(([k, label]) =>
         `<label class="catchip"><input type="radio" name="cat-${uid}" value="${k}" ${k === curCat ? "checked" : ""}><span>${catIcon(k)}${label}</span></label>`).join("")}</div>
@@ -892,6 +901,9 @@ function wireForm(root, ctx, editing, onCancel) {
     if (!description) { toast("What was it for?"); return; }
     if (!(amount > 0)) { toast("Enter an amount more than 0."); return; }
     if (!/^[A-Z]{3}$/.test(currency)) { toast("Currency must be a 3-letter code, e.g. SGD or MYR."); return; }
+    // untouched "now" default on a new expense means the moment of saving, not when the page was opened
+    const whenEl = f("when"), whenDate = new Date(!editing && whenEl.dataset.init === whenEl.value ? Date.now() : whenEl.value);
+    if (!whenEl.value || isNaN(whenDate)) { toast("Pick a date and time."); return; }
     let split;
     try {
       if (mode === "equal") {
@@ -908,7 +920,7 @@ function wireForm(root, ctx, editing, onCancel) {
       await call("save_expense", {
         p_id: editing ? editing.id : null, p_group: id, p_description: description, p_amount: amount,
         p_currency: currency, p_paid_by: f("payer").value, p_split_type: mode, p_splits: split,
-        p_category: picked ? picked.value : "" });
+        p_category: picked ? picked.value : "", p_spent_at: whenDate.toISOString() });
       setLastCurrency(currency);
       route();
     } catch (e) { showErr(null, e); ev.target.disabled = false; }
