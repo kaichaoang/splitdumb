@@ -109,6 +109,26 @@ const spAll = spendingByCurrency(m2, ex2, sp2);
 const csAll = L.spendingByCategory(ex2);
 for (const c of Object.keys(spAll)) assert.strictEqual(csAll[c].total, spAll[c].total);
 
+// ---- combined (converted) spending ----
+const rates = { USD: 1, SGD: 1.3, MYR: 4 };
+const cm = [{ id: "a" }, { id: "b" }];
+const cx = [
+  { id: "q1", amount: 130, currency: "SGD", category: "food" },   // = 400 MYR = 100 USD
+  { id: "q2", amount: 200, currency: "MYR", category: "food" },   // = 50 USD
+  { id: "q3", amount: 10, currency: "USD", category: "" },
+  { id: "q4", amount: 99, currency: "XYZ", category: "gift" },    // no rate -> left out, reported
+];
+const cspl = cx.flatMap((e) => equalSplit(e.amount, ["a", "b"]).map((x) => ({ ...x, expense_id: e.id })));
+const cv = L.convertedSpending(cm, cx, cspl, rates, "MYR");
+assert.deepStrictEqual(cv.byCat, { food: 60000, "": 4000 });
+assert.deepStrictEqual(cv.byMember, { a: 32000, b: 32000 });
+assert.strictEqual(cv.total, 64000);
+assert.deepStrictEqual(cv.missing, ["XYZ"]);
+// another base gives the same amounts re-expressed (USD: 100 + 50 + 10)
+assert.strictEqual(L.convertedSpending(cm, cx, cspl, rates, "USD").total, 16000);
+// converting to a currency's own base changes nothing
+assert.strictEqual(L.convertedSpending(cm, [cx[1]], cspl, rates, "MYR").total, 20000);
+
 // legacy rows without a currency count as the default currency
 assert.deepStrictEqual(Object.keys(balancesByCurrency(m2, [{ id: "z", amount: 10, paid_by: "y" }], equalSplit(10, ["y", "k"]).map((x) => ({ ...x, expense_id: "z" })), [])), ["SGD"]);
 

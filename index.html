@@ -73,6 +73,8 @@
   .row { display:flex; justify-content:space-between; align-items:center; gap:10px; }
   .person { display:flex; align-items:center; gap:10px; min-width:0; }
   .muted { color:var(--muted); font-size:14px; }
+  .combohead { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .combohead select { width:auto; margin:0; height:34px; padding:0 8px; font-size:14px; }
   .cur { color:var(--accent); font-size:12.5px; font-weight:800; letter-spacing:.08em; margin:16px 0 6px; }
   .amt { font-weight:700; padding:3px 10px; border-radius:999px; font-size:14px; white-space:nowrap; }
   .amt.pos { color:var(--good); background:var(--good-soft); } .amt.neg { color:var(--bad); background:var(--bad-soft); } .amt.zero { color:var(--muted); background:var(--bg); font-weight:500; }
@@ -269,6 +271,26 @@ const statCard = (title, parts, total, cur, note) => `<div class="card"><div cla
   <div class="statchart">${parts.length > 1 ? donut(parts, total, cur, `${title}: ` + parts.map((p) => `${p.label} ${((p.cents / total) * 100).toFixed(1)}%`).join(", ")) : ""}
     <div class="statrows">${parts.map((p) => statRow(p.icon, p.label, p.cents, total, p.color)).join("")}</div></div>
   ${note ? `<div class="muted" style="margin-top:10px">${note}</div>` : ""}</div>`;
+// ---- exchange rates, only for the combined statistics (never for balances or settle-up).
+// Units per 1 USD. Live rates come from a free public API and are cached for 12h; if that fails these rough estimates are used.
+const FX_FALLBACK = { USD:1, SGD:1.29, MYR:4.2, EUR:0.86, GBP:0.75, JPY:150, THB:33, IDR:16500, AUD:1.5, CNY:7.1, HKD:7.8, KRW:1400,
+  VND:25500, PHP:57, INR:88, TWD:31, NZD:1.7, CAD:1.38, CHF:0.8, AED:3.67 };
+let FX = { rates: FX_FALLBACK, live: false, date: "" };
+function loadFx(onUpdate) {
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem("fx")); } catch {}
+  if (cached && cached.rates && cached.rates.USD) FX = { rates: { ...FX_FALLBACK, ...cached.rates }, live: true, date: cached.date || "" };
+  if (cached && Date.now() - cached.t < 12 * 3600e3) return;
+  fetch("https://open.er-api.com/v6/latest/USD").then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then((d) => {
+      if (d.result !== "success" || !d.rates || !(d.rates.SGD > 0) || !(d.rates.MYR > 0)) throw 0;
+      const date = String(d.time_last_update_utc || "").slice(5, 16);
+      FX = { rates: { ...FX_FALLBACK, ...d.rates }, live: true, date };
+      try { localStorage.setItem("fx", JSON.stringify({ t: Date.now(), date, rates: d.rates })); } catch {}
+      onUpdate();
+    }).catch(() => {});
+}
+const getStatsBase = () => { try { const c = localStorage.getItem("statsBase"); if (c && FX.rates[c] > 0) return c; } catch {} return DEFAULT_CURRENCY; };
 const CATCOLOR = { accommodation: 0, food: 1, utilities: 2, entertainment: 3, transport: 4, gift: 5, "": 7 };
 const TAGS = { new: "New", settled: "Settled", open: "Unsettled" };
 const tagHtml = (k) => `<span class="tag ${k}">${TAGS[k]}</span>`;
@@ -550,6 +572,31 @@ function drawGroup(ctx) {
   const catSpend = spendingByCategory(expenses, catKey);
   const kind = !expenses.length ? "new" : debts.length ? "open" : "settled";
 
+  // all currencies converted into one (estimates), only worth showing when the trip uses 2+ currencies
+  function combinedHtml() {
+    const base = getStatsBase();
+    const cv = convertedSpending(members, expenses, splits, FX.rates, base, catKey);
+    const people = members.map((m) => ({ m, v: cv.byMember[m.id] })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v)
+      .map((x, i) => ({ icon: av(x.m.name, "sm", x.m.avatar), label: x.m.name + youTag(x.m), cents: x.v, color: `var(--c${i % 6})` }));
+    const cats = Object.entries(cv.byCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => ({ icon: `<span class="catbadge sm ${k ? "" : "none"}">${catIcon(k)}</span>`, label: catLabel(k), cents: v, color: `var(--c${CATCOLOR[k]})` }));
+    const sum = (a) => a.reduce((t, p) => t + p.cents, 0);
+    const opts = CURRENCIES.map(([c]) => c).filter((c) => FX.rates[c] > 0);
+    const note = `Everything converted to ${esc(base)} at ${FX.live ? "live rates" + (FX.date ? " (" + esc(FX.date) + ")" : "") : "approximate rates"}. An estimate only; balances and settle-up stay in each currency.`
+      + (cv.missing.length ? ` Left out, no rate: ${esc(cv.missing.join(", "))}.` : "");
+    return `<div class="cur combohead"><span>All currencies · ≈ ${esc(base)} ${money(cv.total)}</span>
+        <select id="statbase" aria-label="Convert statistics to">${opts.map((c) => `<option ${c === base ? "selected" : ""}>${c}</option>`).join("")}</select></div>`
+      + (cv.total > 0 ? statCard("Who spent what", people, sum(people), "≈ " + base, "")
+        + statCard("By category", cats, sum(cats), "≈ " + base, "") : "")
+      + `<div class="muted" style="margin:6px 0 4px">${note}</div>`;
+  }
+  function paintCombined() {
+    const el = $("combined");
+    if (!el) return;
+    el.innerHTML = combinedHtml();
+    $("statbase").onchange = (ev) => { try { localStorage.setItem("statsBase", ev.target.value); } catch {} paintCombined(); };
+  }
+
   app.innerHTML = `
     <a class="back" href="#/">← All trips</a>
     <div class="trip-head">
@@ -589,6 +636,7 @@ function drawGroup(ctx) {
     </details>
 
     <details class="sec" data-sec="stats" ${openSecs.has("stats") ? "open" : ""}><summary>Statistics</summary>
+    ${curs.length > 1 ? `<div id="combined">${combinedHtml()}</div>` : ""}
     ${curs.length ? Object.entries(spend).map(([c, s]) => {
       const people = members.map((m) => ({ m, v: s.byMember[m.id].spent })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v)
         .map((x, i) => ({ icon: av(x.m.name, "sm", x.m.avatar), label: x.m.name + youTag(x.m), cents: x.v, color: `var(--c${i % 6})` }));
@@ -627,6 +675,8 @@ function drawGroup(ctx) {
     </div>`;
 
   // ---- wiring
+  paintCombined();
+  loadFx(paintCombined);
   document.querySelectorAll('details.sec').forEach((el) => (el.ontoggle = () => (el.open ? openSecs.add(el.dataset.sec) : openSecs.delete(el.dataset.sec))));
   $("copy").onclick = async (ev) => {
     const btn = ev.currentTarget, url = location.href;
