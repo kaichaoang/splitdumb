@@ -20,7 +20,7 @@
     --good:#0f9f6e; --good-soft:#def7ec; --bad:#e5484d; --bad-soft:#ffe8ea; --warn:#a96a00; --warn-soft:#fff1d1;
     --g1:#d3e6fd; --g2:#a9cdf8; --b1:#8fbcf8; --b2:#5b93ea; --shadow:0 1px 2px rgba(20,45,100,.05), 0 8px 22px rgba(20,45,100,.06);
     /* chart colours: c0-c5 for people and categories, c7 grey for "no category" */
-    --c0:#5b93ea; --c1:#e08a1e; --c2:#0f9f6e; --c3:#e5484d; --c4:#8b5cf6; --c5:#b94fa8; --c7:#8a94b0;
+    --c0:#5b93ea; --c1:#e08a1e; --c2:#0f9f6e; --c3:#e5484d; --c4:#8b5cf6; --c5:#b94fa8; --c6:#0b9fb3; --c7:#8a94b0; --c8:#8aa51d;
     --danger:#c62828; --danger-ink:#ffffff;
   }
   @media (prefers-color-scheme: dark) {
@@ -29,7 +29,7 @@
       --primary:#9cc4fb; --primary-ink:#0b1b3a; --primary-soft:#1b2d57; --accent:#9cc4fb; --hd-ink:#ffffff; --hd-chip:rgba(255,255,255,.18);
       --good:#3dd6a1; --good-soft:#12362c; --bad:#ff7d82; --bad-soft:#3c1d26; --warn:#f6c453; --warn-soft:#3b3115;
       --g1:#1e3a6e; --g2:#245b8a; --b1:#6aa4ff; --b2:#9cc4fb; --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.25);
-      --c0:#6aa4ff; --c1:#f2a64a; --c2:#3dd6a1; --c3:#ff7d82; --c4:#a78bfa; --c5:#d98ccb; --c7:#6b7799;
+      --c0:#6aa4ff; --c1:#f2a64a; --c2:#3dd6a1; --c3:#ff7d82; --c4:#a78bfa; --c5:#d98ccb; --c6:#4fd1de; --c7:#6b7799; --c8:#b5d447;
       --danger:#ff7d82; --danger-ink:#3a0f12;
     }
   }
@@ -272,11 +272,13 @@ const ICONS = {
   utilities: `<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>`,
   accommodation: `<path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>`,
   entertainment: `<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>`,
+  apparel: `<path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/>`,
+  misc: `<circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/><circle cx="5" cy="12" r="1.2"/>`,
   gift: `<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/>`,
 };
 const svg = (name) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
 // Expense categories. "" (none) is the default. The same ids are allowed by save_expense in schema.sql.
-const CATS = [["", "None"], ["transport", "Transport"], ["food", "Food"], ["utilities", "Utilities"], ["accommodation", "Accommodation"], ["gift", "Gift"], ["entertainment", "Entertainment"]];
+const CATS = [["", "None"], ["transport", "Transport"], ["food", "Food"], ["utilities", "Utilities"], ["accommodation", "Accommodation"], ["gift", "Gift"], ["entertainment", "Entertainment"], ["apparel", "Apparel"], ["misc", "Misc"]];
 const catKey = (c) => (c && CATS.some(([k]) => k === c) ? c : "");
 const catLabel = (c) => (catKey(c) ? CATS.find(([k]) => k === c)[1] : "No category");
 const catIcon = (c) => svg(catKey(c) || "none");
@@ -327,7 +329,7 @@ function loadFx(onUpdate) {
     }).catch(() => {});
 }
 const getStatsBase = () => { try { const c = localStorage.getItem("statsBase"); if (c && FX.rates[c] > 0) return c; } catch {} return DEFAULT_CURRENCY; };
-const CATCOLOR = { accommodation: 0, food: 1, utilities: 2, entertainment: 3, transport: 4, gift: 5, "": 7 };
+const CATCOLOR = { accommodation: 0, food: 1, utilities: 2, entertainment: 3, transport: 4, gift: 5, apparel: 6, misc: 8, "": 7 };
 const TAGS = { new: "New", settled: "Settled", open: "Unsettled" };
 const tagHtml = (k) => `<span class="tag ${k}">${TAGS[k]}</span>`;
 const tripKind = (t) => (!t.expense_count ? "new" : t.settled ? "settled" : "open");
@@ -856,7 +858,7 @@ function formHtml(ctx, editing) {
         <button type="button" class="segbtn ${mode === "percent" ? "on" : ""}" data-mode="percent">By %</button>
       </div>
       <div class="splitbox ${mode === "percent" ? "mode-percent" : ""}" data-f="splitbox">
-        ${members.map((m) => `<div class="srow" data-id="${m.id}">
+        ${[...members].sort((a, b) => (b.id === meId) - (a.id === meId)).map((m) => `<div class="srow" data-id="${m.id}">
           <label class="chk"><input type="checkbox" class="inc" value="${m.id}" ${checked.has(m.id) ? "checked" : ""}><span class="person">${av(m.name, "sm", m.avatar)}${esc(m.name)}${youTag(m)}</span></label>
           <span class="pctwrap"><input class="pct" type="number" step="0.001" min="0" max="100" inputmode="decimal" value="${pct[m.id] ?? 0}"><span class="muted">%</span></span>
           <span class="prev muted"></span></div>`).join("")}
