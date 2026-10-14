@@ -85,6 +85,26 @@
   .spinner { width:38px; height:38px; border-radius:50%; border:3.5px solid var(--line); border-top-color:var(--accent); animation:spin .8s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spinner { animation-duration:2.4s; } }
+  .pplrow { cursor:pointer; }
+  .pplrow:hover { background:var(--primary-soft); }
+  .pplrow:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .rowend { display:flex; align-items:center; gap:8px; flex:none; }
+  .pplrow .rowend button { width:auto; margin:0; padding:7px 10px; font-size:14px; white-space:nowrap; }
+  .pplrow .person > div { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pplrow .person { min-width:0; flex:1; }
+  .rowarrow { display:grid; place-items:center; color:var(--muted); }
+  .rowarrow svg { width:18px; height:18px; transform:rotate(-90deg); }
+  body.modal-open { overflow:hidden; }
+  .scrim2 { position:fixed; inset:0; z-index:60; background:rgba(6,12,32,.5); display:grid; place-items:end center; padding:16px; }
+  @media (min-width:560px) { .scrim2 { place-items:center; } }
+  .modal { position:relative; width:100%; max-width:380px; background:var(--surface); color:var(--ink); border-radius:20px; padding:20px; box-shadow:0 20px 50px rgba(0,0,0,.35); max-height:85vh; overflow:auto; }
+  .modal .mclose { position:absolute; top:10px; right:10px; width:36px; height:36px; padding:0; margin:0; display:grid; place-items:center; border-radius:50%; }
+  .pf-top { display:flex; align-items:center; gap:14px; padding-right:36px; }
+  .pf-top b { font-size:18px; }
+  .pf-sec { margin:18px 0 4px; font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+  .pf-cur { color:var(--accent); font-size:12.5px; font-weight:800; letter-spacing:.08em; margin:12px 0 2px; }
+  .pf-line { display:flex; justify-content:space-between; gap:10px; padding:5px 0; font-variant-numeric:tabular-nums; }
+  .pf-line + .pf-line { border-top:1px solid var(--line); }
   .viewbar { display:flex; gap:8px; margin:8px 0 10px; }
   .viewbar select { margin:0; height:40px; padding:0 10px; font-size:15px; width:auto; flex:1; min-width:0; }
   .cur { color:var(--accent); font-size:12.5px; font-weight:800; letter-spacing:.08em; margin:16px 0 6px; }
@@ -261,6 +281,7 @@ const av = (name, cls = "", pic = "") => {
 };
 // Icons: 24x24 outline paths (Lucide, ISC licence), drawn inline so there is nothing extra to load.
 const ICONS = {
+  x: `<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`,
   chevron: `<path d="m6 9 6 6 6-6"/>`,
   edit: `<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>`,
   trash: `<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>`,
@@ -581,7 +602,7 @@ function renderAccount() {
 }
 
 // ------------------------------------------------------------------ a trip
-const openSecs = new Set();   // which collapsed sections the user has opened (survives redraws)
+const openSecs = new Set(["people"]);   // People starts open; others start closed   // which collapsed sections the user has opened (survives redraws)
 const filt = { gid: null, from: "", to: "", by: "", paid: "", cur: "", cat: "" };   // expense list filters
 let editingId = null;   // expense being edited in place in the list, if any
 
@@ -602,6 +623,7 @@ async function renderGroup(id) {
 }
 
 function drawGroup(ctx) {
+  { const p = document.getElementById("profile"); if (p) { p.remove(); document.body.classList.remove("modal-open"); } }
   if (filt.gid !== ctx.id) Object.assign(filt, { gid: ctx.id, from: "", to: "", by: "", paid: "", cur: "", cat: "" });
   const { id, group, meId, members, expenses, payments, splits } = ctx;
   const me = members.find((m) => m.id === meId);
@@ -710,18 +732,56 @@ function drawGroup(ctx) {
       <div id="explist"></div>
     </details>
 
-    <h2>People</h2>
-    ${members.map((m) => `<div class="card row"><div class="person">${av(m.name, "", m.avatar)}<div>${esc(m.name)}${youTag(m)}
+    <details class="sec" data-sec="people" ${openSecs.has("people") ? "open" : ""}><summary>People</summary>
+    ${[...members].sort((a, b) => (b.id === meId) - (a.id === meId)).map((m) => `<div class="card row pplrow" data-member="${m.id}" role="button" tabindex="0" aria-label="View ${esc(m.name)}"><div class="person">${av(m.name, "", m.avatar)}<div>${esc(m.name)}${youTag(m)}
         <div class="muted">${m.linked ? "@" + esc(m.username) : "no account"}</div></div></div>
-        ${m.linked ? "" : `<button class="ghost" data-link="${m.id}">Link account</button>`}</div>`).join("")}
+        <span class="rowend">${m.linked ? "" : `<button class="ghost" data-link="${m.id}">Link account</button>`}<span class="rowarrow">${svg("chevron")}</span></span></div>`).join("")}
     <div class="card">
       <div class="muted">Add a friend who has an account</div>
       <div class="grid2b"><input id="newu" placeholder="their username" autocapitalize="none" autocorrect="off" spellcheck="false"><button id="addu">Add</button></div>
       <div class="muted" style="margin-top:8px">Or add someone by name only (no account)</div>
       <div class="grid2b"><input id="newm" placeholder="Name"><button id="addm">Add</button></div>
-    </div>`;
+    </div>
+    </details>`;
+
+  // ---- profile popup (tap a person)
+  function closeProfile() {
+    const el = $("profile");
+    if (el) { el.remove(); document.body.classList.remove("modal-open"); document.removeEventListener("keydown", onProfileKey); if (profileOpener && document.contains(profileOpener)) profileOpener.focus(); }
+  }
+  let profileOpener = null;
+  function onProfileKey(ev) { if (ev.key === "Escape") closeProfile(); }
+  function openProfile(m, opener) {
+    closeProfile();
+    profileOpener = opener || null;
+    const lines = curs.map((c) => {
+      const spent = spend[c].byMember[m.id].spent, b = byCur[c][m.id];
+      return `<div class="pf-cur">${esc(c)}</div>
+        <div class="pf-line"><span>Spent</span><b>${money(spent)}</b></div>
+        <div class="pf-line"><span>Balance</span><span class="amt ${b > 0 ? "pos" : b < 0 ? "neg" : "zero"}">${b > 0 ? "gets back " + money(b) : b < 0 ? "owes " + money(-b) : "settled"}</span></div>`;
+    }).join("");
+    const box = document.createElement("div");
+    box.id = "profile"; box.className = "scrim2";
+    box.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(m.name)}">
+      <button type="button" class="ghost mclose" aria-label="Close">${svg("x")}</button>
+      <div class="pf-top">${av(m.name, "big", m.avatar)}<div><b>${esc(m.name)}</b>${m.id === meId ? ` <span class="muted">(you)</span>` : ""}
+        <div class="muted">${m.linked ? "@" + esc(m.username) : "No account yet"}</div></div></div>
+      <div class="pf-sec">In this trip</div>
+      ${lines || `<div class="muted">No expenses yet.</div>`}</div>`;
+    document.body.appendChild(box);
+    document.body.classList.add("modal-open");
+    box.onclick = (ev) => { if (ev.target === box) closeProfile(); };
+    box.querySelector(".mclose").onclick = closeProfile;
+    box.querySelector(".mclose").focus();
+    document.addEventListener("keydown", onProfileKey);
+  }
 
   // ---- wiring
+  document.querySelectorAll("[data-member]").forEach((el) => {
+    const open = () => openProfile(members.find((x) => x.id === el.dataset.member), el);
+    el.onclick = (ev) => { if (!ev.target.closest("button")) open(); };
+    el.onkeydown = (ev) => { if ((ev.key === "Enter" || ev.key === " ") && ev.target === el) { ev.preventDefault(); open(); } };
+  });
   paintStats();
   loadFx(paintStats);
   document.querySelectorAll('details.sec').forEach((el) => (el.ontoggle = () => (el.open ? openSecs.add(el.dataset.sec) : openSecs.delete(el.dataset.sec))));
