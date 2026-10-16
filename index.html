@@ -81,6 +81,10 @@
   .row { display:flex; justify-content:space-between; align-items:center; gap:10px; }
   .person { display:flex; align-items:center; gap:10px; min-width:0; }
   .muted { color:var(--muted); font-size:14px; }
+  #progress { position:fixed; left:0; right:0; top:0; height:3px; z-index:80; overflow:hidden; opacity:0; pointer-events:none; transition:opacity .15s; }
+  #progress.on { opacity:1; }
+  #progress::before { content:""; position:absolute; inset:0; width:40%; background:linear-gradient(90deg, transparent, var(--accent), transparent); animation:slide 1s ease-in-out infinite; }
+  @keyframes slide { from { transform:translateX(-100%); } to { transform:translateX(250%); } }
   .loading { display:grid; place-items:center; padding:28vh 0; }
   .spinner { width:38px; height:38px; border-radius:50%; border:3.5px solid var(--line); border-top-color:var(--accent); animation:spin .8s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
@@ -249,6 +253,7 @@
 </style>
 </head>
 <body>
+<div id="progress" aria-hidden="true"></div>
 <header id="bar">
   <button id="burger" aria-label="Open menu">☰</button>
   <a class="logo" href="#/">Split<span>Dumb</span></a>
@@ -340,6 +345,7 @@ function loadFx(onUpdate) {
   try { cached = JSON.parse(localStorage.getItem("fx")); } catch {}
   if (cached && cached.rates && cached.rates.USD) FX = { rates: { ...FX_FALLBACK, ...cached.rates }, live: true, date: cached.date || "" };
   if (cached && Date.now() - cached.t < 12 * 3600e3) return;
+  busy(1);
   fetch("https://open.er-api.com/v6/latest/USD").then((r) => (r.ok ? r.json() : Promise.reject()))
     .then((d) => {
       if (d.result !== "success" || !d.rates || !(d.rates.SGD > 0) || !(d.rates.MYR > 0)) throw 0;
@@ -347,7 +353,7 @@ function loadFx(onUpdate) {
       FX = { rates: { ...FX_FALLBACK, ...d.rates }, live: true, date };
       try { localStorage.setItem("fx", JSON.stringify({ t: Date.now(), date, rates: d.rates })); } catch {}
       onUpdate();
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => busy(-1));
 }
 const getStatsBase = () => { try { const c = localStorage.getItem("statsBase"); if (c && FX.rates[c] > 0) return c; } catch {} return DEFAULT_CURRENCY; };
 const CATCOLOR = { accommodation: 0, food: 1, utilities: 2, entertainment: 3, transport: 4, gift: 5, apparel: 6, misc: 8, "": 7 };
@@ -373,8 +379,20 @@ function setSession(s) {
   session = s;
   try { s ? localStorage.setItem("session", JSON.stringify(s)) : (localStorage.removeItem("session"), localStorage.removeItem("lastHash")); } catch {}
 }
+// Thin bar at the top while anything is waiting on the network (only shows if it takes more than a moment).
+let pending = 0, busyTimer = null;
+function busy(d) {
+  pending = Math.max(0, pending + d);
+  const bar = document.getElementById("progress");
+  if (!bar) return;
+  if (pending > 0) { if (!busyTimer && !bar.classList.contains("on")) busyTimer = setTimeout(() => { busyTimer = null; if (pending > 0) bar.classList.add("on"); }, 250); }
+  else { clearTimeout(busyTimer); busyTimer = null; bar.classList.remove("on"); }
+}
 async function call(fn, args = {}) {
-  const { data, error } = await sb.rpc(fn, { p_token: session && session.token, ...args });
+  busy(1);
+  let res;
+  try { res = await sb.rpc(fn, { p_token: session && session.token, ...args }); } finally { busy(-1); }
+  const { data, error } = res;
   if (error) {
     const e = new Error(error.message);
     if (/Session expired/i.test(error.message)) { setSession(null); e.expired = true; }
@@ -383,7 +401,10 @@ async function call(fn, args = {}) {
   return data;
 }
 async function callPublic(fn, args) {
-  const { data, error } = await sb.rpc(fn, args);
+  busy(1);
+  let res;
+  try { res = await sb.rpc(fn, args); } finally { busy(-1); }
+  const { data, error } = res;
   if (error) throw new Error(error.message);
   return data;
 }
