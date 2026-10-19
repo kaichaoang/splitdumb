@@ -169,8 +169,11 @@
   .srow .pct { width:72px; margin:0; text-align:right; }
   .srow .chk, .srow .chk .person { min-width:0; }
   .prev { min-width:60px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; font-size:13.5px; }
-  .splitbox.mode-percent .pctwrap { display:flex; } .splitbox.mode-percent .inc { display:none; }
-  .splitbox:not(.mode-percent) [data-f="pcttotal"] { display:none; }
+  .srow .amtwrap { display:none; } .srow .amtin { width:92px; margin:0; text-align:right; }
+  .splitbox.mode-percent .pctwrap, .splitbox.mode-amount .amtwrap { display:flex; }
+  .splitbox.mode-percent .inc, .splitbox.mode-amount .inc { display:none; }
+  .splitbox.mode-amount .prev { display:none; }
+  .splitbox:not(.mode-percent):not(.mode-amount) [data-f="pcttotal"] { display:none; }
   .card.exp-edit { border-color:var(--accent); }
   .card.exp-edit > h2 { margin:0 0 8px; }
   details.sec { margin:14px 0; background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow); padding:0 14px; }
@@ -910,12 +913,14 @@ function formHtml(ctx, editing) {
   const youTag = (m) => (m.id === meId ? " (you)" : "");
   const uid = editing ? editing.id : "new";
   const editSplits = editing ? splits.filter((s) => s.expense_id === editing.id) : [];
-  const mode = editing && editing.split_type === "percent" ? "percent" : "equal";
+  const mode = editing && ["percent", "amount"].includes(editing.split_type) ? editing.split_type : "equal";
   const curCat = editing ? catKey(editing.category) : "";
   const checked = new Set(editing ? editSplits.map((s) => s.member_id) : members.map((m) => m.id));
   const pct = {};
   if (mode === "percent") editSplits.forEach((s) => (pct[s.member_id] = Number(s.percent)));
   else equalPercents([...checked]).forEach((e) => (pct[e.id] = e.percent));
+  const amts = {};
+  editSplits.forEach((s) => (amts[s.member_id] = Number(s.share)));
   const whenVal = localInputValue(editing ? (editing.spent_at || editing.created_at) : new Date());
   const cur = editing ? curOf(editing) : defaultCurrency(ctx), known = CURRENCIES.some(([c]) => c === cur);
   return `
@@ -936,12 +941,14 @@ function formHtml(ctx, editing) {
       <div class="muted" style="margin-top:6px">Split</div>
       <div class="seg">
         <button type="button" class="segbtn ${mode === "equal" ? "on" : ""}" data-mode="equal">Equally</button>
+        <button type="button" class="segbtn ${mode === "amount" ? "on" : ""}" data-mode="amount">Amounts</button>
         <button type="button" class="segbtn ${mode === "percent" ? "on" : ""}" data-mode="percent">By %</button>
       </div>
-      <div class="splitbox ${mode === "percent" ? "mode-percent" : ""}" data-f="splitbox">
+      <div class="splitbox ${mode === "percent" ? "mode-percent" : mode === "amount" ? "mode-amount" : ""}" data-f="splitbox">
         ${[...members].sort((a, b) => (b.id === meId) - (a.id === meId)).map((m) => `<div class="srow" data-id="${m.id}">
           <label class="chk"><input type="checkbox" class="inc" value="${m.id}" ${checked.has(m.id) ? "checked" : ""}><span class="person">${av(m.name, "sm", m.avatar)}${esc(m.name)}${youTag(m)}</span></label>
           <span class="pctwrap"><input class="pct" type="number" step="0.001" min="0" max="100" inputmode="decimal" value="${pct[m.id] ?? 0}"><span class="muted">%</span></span>
+          <span class="amtwrap"><input class="amtin" type="number" step="0.01" min="0" inputmode="decimal" value="${amts[m.id] ?? ""}" placeholder="0.00" aria-label="Amount for ${esc(m.name)}"></span>
           <span class="prev muted"></span></div>`).join("")}
         <div data-f="pcttotal" class="muted"></div>
       </div>
@@ -956,14 +963,22 @@ function wireForm(root, ctx, editing, onCancel) {
   const f = (n) => root.querySelector(`[data-f="${n}"]`);
   const all = (sel) => [...root.querySelectorAll(sel)];
   const rows = () => all(".srow");
-  let mode = editing && editing.split_type === "percent" ? "percent" : "equal";
+  let mode = editing && ["percent", "amount"].includes(editing.split_type) ? editing.split_type : "equal";
   const getCcy = () => (f("ccy").value === "OTHER" ? f("ccyother").value : f("ccy").value).trim().toUpperCase();
 
   function updatePreview() {
     rows().forEach((r) => (r.querySelector(".prev").textContent = ""));
     const amount = parseFloat(f("amt").value), cur = getCcy();
     const show = (memberId, share) => { const r = rows().find((x) => x.dataset.id === memberId); if (r) r.querySelector(".prev").textContent = `${cur} ${share.toFixed(2)}`; };
-    if (mode === "percent") {
+    if (mode === "amount") {
+      const entries = rows().map((r) => ({ id: r.dataset.id, amount: r.querySelector(".amtin").value }));
+      const sum = entries.reduce((t, e) => t + Math.round((parseFloat(e.amount) || 0) * 100), 0);
+      const el = f("pcttotal"), diff = Math.round((amount || 0) * 100) - sum;
+      el.textContent = !(amount > 0) ? `Total ${cur} ${(sum / 100).toFixed(2)}`
+        : diff === 0 ? `Total ${cur} ${(sum / 100).toFixed(2)}`
+        : diff > 0 ? `${cur} ${(diff / 100).toFixed(2)} left to assign` : `${cur} ${(-diff / 100).toFixed(2)} over the amount`;
+      el.className = diff === 0 && amount > 0 ? "muted" : "err";
+    } else if (mode === "percent") {
       const entries = rows().map((r) => ({ id: r.dataset.id, percent: parseFloat(r.querySelector(".pct").value) || 0 }));
       const tot = entries.reduce((t, e) => t + Math.round(e.percent * 1000), 0) / 1000;
       const el = f("pcttotal");
@@ -984,8 +999,18 @@ function wireForm(root, ctx, editing, onCancel) {
       const even = Object.fromEntries(equalPercents(ids).map((e) => [e.id, e.percent]));
       rows().forEach((r) => (r.querySelector(".pct").value = even[r.dataset.id] ?? 0));
     }
+    if (next === "amount") {    // start from an even split between whoever is ticked (or the percentages, if coming from %)
+      const amount = parseFloat(f("amt").value);
+      const ids = rows().filter((r) => r.querySelector(".inc").checked).map((r) => r.dataset.id);
+      let init = {};
+      if (amount > 0) {
+        try { init = Object.fromEntries((mode === "percent" ? percentSplit(amount, rows().map((r) => ({ id: r.dataset.id, percent: parseFloat(r.querySelector(".pct").value) || 0 }))) : equalSplit(amount, ids)).map((s) => [s.member_id, s.share])); } catch (e) { if (ids.length) init = Object.fromEntries(equalSplit(amount, ids).map((s) => [s.member_id, s.share])); }
+      }
+      rows().forEach((r) => (r.querySelector(".amtin").value = init[r.dataset.id] ?? ""));
+    }
     mode = next;
     f("splitbox").classList.toggle("mode-percent", next === "percent");
+    f("splitbox").classList.toggle("mode-amount", next === "amount");
     all("[data-mode]").forEach((x) => x.classList.toggle("on", x.dataset.mode === next));
     updatePreview();
   }));
@@ -995,7 +1020,7 @@ function wireForm(root, ctx, editing, onCancel) {
     f("ccyshow").textContent = v === "OTHER" ? "Other…" : v;   // the closed box shows just the code; the list shows full names
     f("ccyother").style.display = v === "OTHER" ? "" : "none"; if (v === "OTHER") f("ccyother").focus(); updatePreview();
   };
-  rows().forEach((r) => { r.querySelector(".inc").onchange = updatePreview; r.querySelector(".pct").oninput = updatePreview; });
+  rows().forEach((r) => { r.querySelector(".inc").onchange = updatePreview; r.querySelector(".pct").oninput = updatePreview; r.querySelector(".amtin").oninput = updatePreview; });
 
   if (editing) f("cancel").onclick = onCancel;
 
@@ -1014,6 +1039,8 @@ function wireForm(root, ctx, editing, onCancel) {
         const ids = rows().filter((r) => r.querySelector(".inc").checked).map((r) => r.dataset.id);
         if (!ids.length) throw new Error("Pick at least one person to split with.");
         split = equalSplit(amount, ids);
+      } else if (mode === "amount") {
+        split = amountSplit(amount, rows().map((r) => ({ id: r.dataset.id, amount: r.querySelector(".amtin").value })));
       } else {
         split = percentSplit(amount, rows().map((r) => ({ id: r.dataset.id, percent: parseFloat(r.querySelector(".pct").value) || 0 })));
       }

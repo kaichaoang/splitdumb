@@ -1,6 +1,6 @@
 const assert = require("assert");
 const L = require("./logic.js");
-const { equalSplit, percentSplit, equalPercents, computeBalances, balancesByCurrency, spendingByCurrency, simplifyDebts } = L;
+const { equalSplit, percentSplit, amountSplit, equalPercents, computeBalances, balancesByCurrency, spendingByCurrency, simplifyDebts } = L;
 
 const sum = (o) => Object.values(o).reduce((t, v) => t + v, 0);
 const cents = (rows) => Math.round(rows.reduce((t, x) => t + x.share, 0) * 100);
@@ -140,4 +140,11 @@ assert.deepStrictEqual(L.personCategorySpend(cx, cspl, (c) => (c === "MYR" ? 1 :
 // legacy rows without a currency count as the default currency
 assert.deepStrictEqual(Object.keys(balancesByCurrency(m2, [{ id: "z", amount: 10, paid_by: "y" }], equalSplit(10, ["y", "k"]).map((x) => ({ ...x, expense_id: "z" })), [])), ["SGD"]);
 
+
+{
+  const a = amountSplit(10.01, [{ id: "a", amount: 6 }, { id: "b", amount: "4.01" }, { id: "c", amount: 0 }]);
+  assert.deepStrictEqual(a, [{ member_id: "a", share: 6 }, { member_id: "b", share: 4.01 }]);
+  assert.throws(() => amountSplit(10, [{ id: "a", amount: 6 }, { id: "b", amount: 3.99 }]), /add up/);
+  assert.throws(() => amountSplit(10, [{ id: "a", amount: 0 }]), /at least one/);
+}
 console.log("all good");

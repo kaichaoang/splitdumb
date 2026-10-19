@@ -371,7 +371,7 @@ end $$;
 -- ------------------------------------------------------------ expenses
 -- Create (p_id null) or update an expense and its splits in ONE transaction.
 -- "Added by" is always the caller, set by the server.
--- p_splits: [{"member_id": "...", "share": 15.00, "percent": 50}]  (percent only for split_type 'percent')
+-- p_splits: [{"member_id": "...", "share": 15.00, "percent": 50}]  (percent only for split_type 'percent'; 'amount' = exact per-person shares)
 -- p_category: '' (none) or one of transport, food, utilities, accommodation, gift, entertainment, apparel, misc. Optional, so older callers still work.
 create or replace function save_expense(
   p_token text, p_id uuid, p_group uuid, p_description text, p_amount numeric, p_currency text,
@@ -389,7 +389,7 @@ declare
 begin
   if v_desc = '' or length(v_desc) > 120 then raise exception 'Description must be 1-120 characters'; end if;
   if v_cat not in ('', 'transport', 'food', 'utilities', 'accommodation', 'gift', 'entertainment', 'apparel', 'misc') then raise exception 'Unknown category'; end if;
-  if p_split_type not in ('equal', 'percent') then raise exception 'Bad split type'; end if;
+  if p_split_type not in ('equal', 'percent', 'amount') then raise exception 'Bad split type'; end if;
   if p_currency is null or p_currency !~ '^[A-Z]{3}$' then raise exception 'Currency must be a 3-letter code'; end if;
   if p_amount is null or p_amount <= 0 then raise exception 'Amount must be more than 0'; end if;
   if p_spent_at is not null and (p_spent_at < timestamptz '2000-01-01' or p_spent_at > now() + interval '2 years') then raise exception 'That date looks wrong'; end if;

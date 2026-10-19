@@ -36,6 +36,16 @@ function percentSplit(amount, entries) {
   return items.map((x) => ({ member_id: x.id, share: x.c / 100, percent: x.p / 1000 }));
 }
 
+// Split by exact amounts: entries [{id, amount}]. Must add up to the total to the cent.
+function amountSplit(amount, entries) {
+  const cents = Math.round(amount * 100);
+  const items = entries.map((e) => ({ id: e.id, c: Math.round((Number(e.amount) || 0) * 100) })).filter((x) => x.c > 0);
+  if (!items.length) throw new Error("Enter an amount for at least one person.");
+  const sum = items.reduce((t, x) => t + x.c, 0);
+  if (sum !== cents) throw new Error(`Amounts add up to ${(sum / 100).toFixed(2)}, not ${(cents / 100).toFixed(2)}.`);
+  return items.map((x) => ({ member_id: x.id, share: x.c / 100 }));
+}
+
 // Even percentages for a list of ids, in thousandths so they add to exactly 100 (e.g. 3 people: 33.334, 33.333, 33.333).
 function equalPercents(ids) {
   const n = ids.length;
@@ -179,7 +189,7 @@ function simplifyDebts(bal) {
 
 if (typeof module !== "undefined") {
   module.exports = {
-    equalSplit, percentSplit, equalPercents, computeBalances,
+    equalSplit, percentSplit, amountSplit, equalPercents, computeBalances,
     balancesByCurrency, spendingByCurrency, spendingByCategory, convertedSpending, personCategorySpend, simplifyDebts,
   };
 }
