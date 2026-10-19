@@ -1053,6 +1053,7 @@ function wireForm(root, ctx, editing, onCancel) {
         p_currency: currency, p_paid_by: f("payer").value, p_split_type: mode, p_splits: split,
         p_category: picked ? picked.value : "", p_spent_at: whenDate.toISOString() });
       if (!editing) setLastCurrency(currency);
+      toast(editing ? "Expense updated!" : "Expense added!", "ok");
       route();
     } catch (e) { showErr(null, e); ev.target.disabled = false; }
   };
