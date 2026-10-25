@@ -1,0 +1,50 @@
+name: Supabase keep-alive
+
+# Free-tier Supabase projects pause after a week without activity.
+# This pings the public `me` RPC every 3 days so the database stays awake.
+# Uses only the public URL and anon key already in config.js; no secrets.
+
+on:
+  schedule:
+    - cron: "0 16 */3 * *" # 16:00 UTC = midnight Singapore time, every 3 days
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Ping Supabase
+        run: |
+          URL=$(sed -n 's/.*SUPABASE_URL *= *"\([^"]*\)".*/\1/p' config.js)
+          KEY=$(sed -n 's/.*SUPABASE_ANON_KEY *= *"\([^"]*\)".*/\1/p' config.js)
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "Could not read SUPABASE_URL / SUPABASE_ANON_KEY from config.js"
+            exit 1
+          fi
+
+          for attempt in 1 2 3; do
+            STATUS=$(curl -s -o body.txt -w '%{http_code}' --max-time 30 \
+              -X POST "$URL/rest/v1/rpc/me" \
+              -H "apikey: $KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"p_token":"keepalive"}') || true
+            echo "Attempt $attempt: HTTP $STATUS"
+            cat body.txt 2>/dev/null || true; echo
+
+            # 200, or 400 "Session expired" from auth_user(), means the database answered.
+            if [ "$STATUS" = "200" ] || { [ "$STATUS" = "400" ] && grep -q "Session expired" body.txt; }; then
+              echo "Supabase is alive."
+              exit 0
+            fi
+            [ "$attempt" -lt 3 ] && sleep 20
+          done
+
+          echo "::error::Supabase did not respond. The project may be paused: open the Supabase dashboard and click Restore."
+          exit 1
